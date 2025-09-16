@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>API Test</title>
+</head>
+<body>
+    <h1>Test Backend API</h1>
+    <input type="text" id="address" value="123 Main Street, Cape Town, Western Cape, 8001" style="width: 500px;">
+    <button onclick="testAPI()">Test Validation</button>
+    <pre id="result"></pre>
+
+    <script>
+        async function testAPI() {
+            const address = document.getElementById('address').value;
+            const resultDiv = document.getElementById('result');
+            
+            try {
+                resultDiv.innerText = 'Testing...';
+                
+                const response = await fetch('http://localhost:5000/api/validate-single', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ address: address })
+                });
+                
+                const data = await response.json();
+                resultDiv.innerText = JSON.stringify(data, null, 2);
+                console.log('Success:', data);
+            } catch (error) {
+                resultDiv.innerText = 'Error: ' + error.message;
+                console.error('Error:', error);
+            }
+        }
+        
+        // Test on load
+        window.onload = () => {
+            fetch('http://localhost:5000/api/health')
+                .then(r => r.json())
+                .then(data => console.log('Backend Health:', data))
+                .catch(err => console.error('Backend not running:', err));
+        }
+    </script>
+</body>
+</html>
