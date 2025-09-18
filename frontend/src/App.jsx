@@ -19,13 +19,13 @@ import {
   XMarkIcon
 } from '@heroicons/react/24/outline';
 import { addressAPI } from './services/api';
-import BulkProcessor from './components/BulkProcessor';
+// import BulkProcessor from './components/BulkProcessor'; // Hidden for demo
 import toast from 'react-hot-toast';
 
 // Sample demo data
 const DEMO_DATA = [
   {
-    id: 'DEMO001',
+    id: 'CRNSEP001',
     original_address: '123 Main Street, Cape Town, Western Cape, 8001',
     normalized_address: '123 Main Street, Cape Town, Western Cape, 8001',
     confidence_score: 95,
@@ -38,10 +38,12 @@ const DEMO_DATA = [
       city: 'Cape Town',
       province: 'Western Cape',
       postal_code: '8001'
-    }
+    },
+    source: 'single',
+    validation_method: 'llm'
   },
   {
-    id: 'DEMO002',
+    id: 'CRNSEP002',
     original_address: '456 Beach Road, Durban',
     normalized_address: '456 Beach Road, Durban, KwaZulu-Natal',
     confidence_score: 72,
@@ -53,10 +55,12 @@ const DEMO_DATA = [
       street_address: '456 Beach Road',
       city: 'Durban',
       province: 'KwaZulu-Natal'
-    }
+    },
+    source: 'single',
+    validation_method: 'llm'
   },
   {
-    id: 'DEMO003',
+    id: 'CRNSEP003',
     original_address: 'Johannesburg, Gauteng',
     normalized_address: 'Johannesburg, Gauteng',
     confidence_score: 45,
@@ -67,17 +71,57 @@ const DEMO_DATA = [
     components: {
       city: 'Johannesburg',
       province: 'Gauteng'
-    }
+    },
+    source: 'single',
+    validation_method: 'llm'
   }
 ];
 
 // Compact Address Validator Component
 const AddressValidator = ({ onValidate, validationMode }) => {
   const [address, setAddress] = useState('');
+  const [contactNumber, setContactNumber] = useState('');
   const [isValidating, setIsValidating] = useState(false);
+
+  // Validate South African phone number
+  const validateSouthAfricanNumber = (number) => {
+    // Remove spaces and special characters
+    const cleaned = number.replace(/[\s\-\(\)]/g, '');
+    
+    // Test numbers that are always accepted
+    const testNumbers = ['+917985645346', '+919807872810'];
+    if (testNumbers.includes(cleaned)) {
+      return true;
+    }
+    
+    // South African phone number patterns:
+    // +27 followed by 9 digits (international format)
+    // 0 followed by 9 digits (local format)
+    // Mobile numbers typically start with 06, 07, 08
+    const saPhoneRegex = /^(\+27|0)[6-8][0-9]{8}$/;
+    
+    return saPhoneRegex.test(cleaned);
+  };
+
+  const formatPhoneNumber = (value) => {
+    // Remove all non-digit characters except +
+    const cleaned = value.replace(/[^\d+]/g, '');
+    return cleaned;
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    if (!contactNumber.trim()) {
+      toast.error('Please enter a contact number');
+      return;
+    }
+    
+    if (!validateSouthAfricanNumber(contactNumber)) {
+      toast.error('Please enter a valid South African mobile number (e.g., +27812345678 or 0812345678)');
+      return;
+    }
+    
     if (!address.trim()) {
       toast.error('Please enter an address');
       return;
@@ -94,6 +138,7 @@ const AddressValidator = ({ onValidate, validationMode }) => {
         },
         body: JSON.stringify({ 
           address: address.trim(),
+          contact_number: contactNumber.trim(),
           validation_mode: validationMode 
         })
       });
@@ -108,7 +153,8 @@ const AddressValidator = ({ onValidate, validationMode }) => {
         throw new Error('Invalid response from server');
       }
       
-      onValidate(result);
+      // Include contact number in the result
+      onValidate({ ...result, contact_number: contactNumber.trim() });
       
       if (result.confidence_score >= 70) {
         toast.success('✅ Address validated successfully!');
@@ -121,6 +167,7 @@ const AddressValidator = ({ onValidate, validationMode }) => {
       }
       
       setAddress('');
+      setContactNumber('');
     } catch (error) {
       console.error('Validation error:', error);
       toast.error(error.message || 'Failed to validate address');
@@ -130,64 +177,184 @@ const AddressValidator = ({ onValidate, validationMode }) => {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="flex gap-2">
-      <div className="flex-1 relative">
-        <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-        <input
-          value={address}
-          onChange={(e) => setAddress(e.target.value)}
-          placeholder="Enter address (e.g., 123 Main Street, Cape Town)"
-          className="w-full pl-10 pr-3 py-2 text-sm border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-          disabled={isValidating}
-        />
+    <form onSubmit={handleSubmit} className="space-y-2">
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">
+            Customer's Contact Number *
+          </label>
+          <div className="relative">
+            <PhoneIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input
+              value={contactNumber}
+              onChange={(e) => setContactNumber(formatPhoneNumber(e.target.value))}
+              placeholder="+27812345678 or 0812345678"
+              className="w-full pl-10 pr-3 py-2 text-sm border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+              disabled={isValidating}
+              required
+            />
+          </div>
+        </div>
+        
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">
+            Customer's Address *
+          </label>
+          <div className="relative">
+            <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              placeholder="123 Main Street, Cape Town"
+              className="w-full pl-10 pr-3 py-2 text-sm border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+              disabled={isValidating}
+              required
+            />
+          </div>
+        </div>
       </div>
-      <button
-        type="submit"
-        disabled={isValidating || !address.trim()}
-        className="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-      >
-        {isValidating ? 'Validating...' : 'Validate'}
-      </button>
+      
+      <div className="flex justify-end">
+        <button
+          type="submit"
+          disabled={isValidating || !address.trim() || !contactNumber.trim()}
+          className="px-6 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {isValidating ? 'Validating...' : 'Validate'}
+        </button>
+      </div>
     </form>
   );
 };
 
 // Compact Result Tile Component with Expandable Details
-const CompactResultTile = ({ result, onClick, isSelected, onAction }) => {
+const CompactResultTile = ({ result, onClick, isSelected, onAction, onConfirmedAddressUpdate }) => {
   const [actionLoading, setActionLoading] = useState({ call: false, whatsapp: false });
   const [isExpanded, setIsExpanded] = useState(false);
+  const [confirmedAddress, setConfirmedAddress] = useState(null);
+  const [loadingConfirmed, setLoadingConfirmed] = useState(false);
+  
+  // Simulate fetching confirmed address (replace with real API later)
+  useEffect(() => {
+    // Only fetch if confidence score < 90 (addresses that needed confirmation)
+    if (result.confidence_score < 90) {
+      fetchConfirmedAddress();
+    }
+  }, [result.id]);
+  
+  const fetchConfirmedAddress = async () => {
+    setLoadingConfirmed(true);
+    try {
+      // Simulated API call - replace with real endpoint
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Mock confirmed address data
+      const mockConfirmed = {
+        address: result.normalized_address + ' (Confirmed)',
+        coordinates: {
+          latitude: result.coordinates?.latitude + (Math.random() * 0.002 - 0.001),
+          longitude: result.coordinates?.longitude + (Math.random() * 0.002 - 0.001)
+        },
+        confirmed_by: 'Customer',
+        confirmed_at: new Date().toISOString(),
+        confirmation_method: Math.random() > 0.5 ? 'call' : 'whatsapp'
+      };
+      
+      setConfirmedAddress(mockConfirmed);
+      // Notify parent component if selected
+      if (isSelected && onConfirmedAddressUpdate) {
+        onConfirmedAddressUpdate(mockConfirmed);
+      }
+    } catch (error) {
+      console.error('Failed to fetch confirmed address:', error);
+    } finally {
+      setLoadingConfirmed(false);
+    }
+  };
+  
+  // Update parent when selection changes
+  useEffect(() => {
+    if (isSelected && confirmedAddress && onConfirmedAddressUpdate) {
+      onConfirmedAddressUpdate(confirmedAddress);
+    }
+  }, [isSelected, confirmedAddress]);
 
   const handleAction = async (actionType, e) => {
     e.stopPropagation();
     setActionLoading(prev => ({ ...prev, [actionType]: true }));
     
+    // Show immediate feedback
+    toast.loading(`Initiating ${actionType}...`, { id: actionType });
+    
     try {
       const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+      const contactNum = result.contact_number || '+27812345678';
+      
       const response = await fetch(`${API_URL}/api/trigger-agent`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
           'ngrok-skip-browser-warning': 'true'
         },
-        body: JSON.stringify({ address: result.original_address, action_type: actionType })
+        body: JSON.stringify({ 
+          address: result.original_address, 
+          action_type: actionType,
+          issues: result.issues || [],
+          confidence_score: result.confidence_score,
+          contact_number: contactNum
+        })
       });
 
+      if (!response.ok) {
+        console.error('Response not OK:', response.status, response.statusText);
+        throw new Error(`Server error: ${response.status}`);
+      }
+      
       const data = await response.json();
+      console.log('Agent trigger response:', data);
+      
+      // Dismiss loading toast
+      toast.dismiss(actionType);
       
       if (data.success) {
-        toast.success(
-          <div>
-            <strong>{actionType === 'call' ? '📞 Call Agent Triggered!' : '💬 WhatsApp Agent Triggered!'}</strong>
-            <p className="text-xs mt-1">Reference: {data.reference_number}</p>
-          </div>,
-          { duration: 5000 }
-        );
+        // Enhanced toast notifications based on action type
+        if (actionType === 'call') {
+          toast.success(
+            `📞 Call Initiated! Dialing ${data.phone_number || contactNum}`,
+            { 
+              duration: 5000,
+              icon: '☎️',
+              style: {
+                background: '#EFF6FF',
+                color: '#1E40AF',
+                border: '1px solid #BFDBFE'
+              }
+            }
+          );
+        } else {
+          toast.success(
+            `💬 WhatsApp Message Sent to ${data.phone_number || contactNum}`,
+            { 
+              duration: 5000,
+              icon: '✅',
+              style: {
+                background: '#F0FDF4',
+                color: '#166534',
+                border: '1px solid #BBF7D0'
+              }
+            }
+          );
+        }
+        
         if (onAction) onAction(result, actionType);
       } else {
-        toast.error('Failed to trigger agent');
+        toast.error(data.error || 'Failed to trigger agent');
+        console.error('Agent trigger failed:', data);
       }
     } catch (error) {
-      toast.error('Failed to trigger agent');
+      // Dismiss loading toast
+      toast.dismiss(actionType);
+      toast.error(`Failed: ${error.message}`);
       console.error('Agent trigger error:', error);
     } finally {
       setActionLoading(prev => ({ ...prev, [actionType]: false }));
@@ -225,9 +392,18 @@ const CompactResultTile = ({ result, onClick, isSelected, onAction }) => {
     >
       {/* Header Row */}
       <div className="flex items-center justify-between mb-1.5">
-        <span className="text-xs text-gray-400 font-mono">
-          #{result.id || Math.random().toString(36).substr(2, 6).toUpperCase()}
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs text-gray-400 font-mono">
+            #{result.id || Math.random().toString(36).substr(2, 6).toUpperCase()}
+          </span>
+          {/* Confirmation Status Indicator */}
+          {result.confidence_score < 90 && confirmedAddress && (
+            <span className="text-xs px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 font-medium flex items-center gap-1">
+              <CheckCircleIcon className="h-3 w-3" />
+              Confirmed
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           <span className={`px-1.5 py-0.5 rounded text-xs font-semibold ${getStatusBadge()}`}>
             {Math.round(result.confidence_score)}%
@@ -264,10 +440,12 @@ const CompactResultTile = ({ result, onClick, isSelected, onAction }) => {
             <button
               onClick={(e) => handleAction('whatsapp', e)}
               disabled={actionLoading.whatsapp}
-              className="p-1 bg-green-50 text-green-600 rounded hover:bg-green-100 disabled:opacity-50 transition-all duration-200 border border-green-200"
+              className="p-1 bg-green-50 rounded hover:bg-green-100 disabled:opacity-50 transition-all duration-200 border border-green-200"
               title="Send WhatsApp"
             >
-              <ChatBubbleLeftRightIcon className="h-3 w-3" />
+              <svg className="h-3 w-3" viewBox="0 0 24 24" fill="#25D366">
+                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.149-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/>
+              </svg>
             </button>
           </div>
         )}
@@ -315,6 +493,44 @@ const CompactResultTile = ({ result, onClick, isSelected, onAction }) => {
             className="overflow-hidden"
           >
             <div className="pt-2 space-y-2">
+              {/* Confirmed Address Section */}
+              {result.confidence_score < 90 && (
+                <div className={`rounded p-2 border ${confirmedAddress ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'}`}>
+                  <div className="flex items-center justify-between mb-1">
+                    <h5 className="text-xs font-semibold text-gray-700">Customer Confirmed Address:</h5>
+                    {confirmedAddress && (
+                      <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                        confirmedAddress.confirmation_method === 'call' 
+                          ? 'bg-blue-100 text-blue-700' 
+                          : 'bg-green-100 text-green-700'
+                      }`}>
+                        {confirmedAddress.confirmation_method === 'call' ? '📞' : '💬'} Confirmed
+                      </span>
+                    )}
+                  </div>
+                  
+                  {loadingConfirmed ? (
+                    <div className="flex items-center gap-2">
+                      <div className="animate-spin h-3 w-3 border-2 border-gray-300 border-t-blue-600 rounded-full"></div>
+                      <span className="text-xs text-gray-500">Fetching confirmed address...</span>
+                    </div>
+                  ) : confirmedAddress ? (
+                    <div className="space-y-1">
+                      <p className="text-xs text-green-700 font-medium">{confirmedAddress.address}</p>
+                      <div className="flex gap-3 text-xs text-gray-600">
+                        <span>📍 Lat: {confirmedAddress.coordinates.latitude.toFixed(6)}</span>
+                        <span>Lng: {confirmedAddress.coordinates.longitude.toFixed(6)}</span>
+                      </div>
+                      <p className="text-xs text-gray-500">
+                        Confirmed {new Date(confirmedAddress.confirmed_at).toLocaleDateString()} via {confirmedAddress.confirmation_method}
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-gray-500 italic">Awaiting customer confirmation...</p>
+                  )}
+                </div>
+              )}
+              
               {/* What's Missing */}
               {result.issues && result.issues.length > 0 && (
                 <div className="bg-amber-50 rounded p-2">
@@ -368,11 +584,13 @@ const CompactResultTile = ({ result, onClick, isSelected, onAction }) => {
   );
 };
 
-// Map Component - Show only selected address
-const MapComponent = ({ selectedResult }) => {
+// Map Component - Show both original and confirmed addresses
+const MapComponent = ({ selectedResult, confirmedAddress }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
-  const markerRef = useRef(null);
+  const originalMarkerRef = useRef(null);
+  const confirmedMarkerRef = useRef(null);
+  const lineRef = useRef(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -427,17 +645,25 @@ const MapComponent = ({ selectedResult }) => {
   useEffect(() => {
     if (!mapInstanceRef.current) return;
 
-    const updateMarker = async () => {
+    const updateMarkers = async () => {
       try {
         const L = await import('leaflet');
         
-        // Remove existing marker
-        if (markerRef.current) {
-          markerRef.current.remove();
-          markerRef.current = null;
+        // Remove existing markers and line
+        if (originalMarkerRef.current) {
+          originalMarkerRef.current.remove();
+          originalMarkerRef.current = null;
+        }
+        if (confirmedMarkerRef.current) {
+          confirmedMarkerRef.current.remove();
+          confirmedMarkerRef.current = null;
+        }
+        if (lineRef.current) {
+          lineRef.current.remove();
+          lineRef.current = null;
         }
 
-        // Add marker for selected result only
+        // Add marker for original address
         if (selectedResult && selectedResult.coordinates) {
           const { latitude, longitude } = selectedResult.coordinates;
           
@@ -446,7 +672,7 @@ const MapComponent = ({ selectedResult }) => {
             selectedResult.confidence_score >= 50 ? '#F59E0B' :
             '#EF4444';
           
-          const customIcon = L.divIcon({
+          const originalIcon = L.divIcon({
             html: `
               <div style="
                 background: ${iconColor};
@@ -455,39 +681,122 @@ const MapComponent = ({ selectedResult }) => {
                 border-radius: 50%;
                 border: 3px solid white;
                 box-shadow: 0 2px 6px rgba(0,0,0,0.4);
-              "></div>
+                position: relative;
+              ">
+                <div style="
+                  position: absolute;
+                  top: -20px;
+                  left: 50%;
+                  transform: translateX(-50%);
+                  background: white;
+                  padding: 2px 6px;
+                  border-radius: 4px;
+                  font-size: 10px;
+                  font-weight: bold;
+                  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+                  white-space: nowrap;
+                ">Original</div>
+              </div>
             `,
-            className: 'custom-marker',
+            className: 'custom-marker-original',
             iconSize: [16, 16],
             iconAnchor: [8, 8],
           });
           
-          markerRef.current = L.marker([latitude, longitude], { icon: customIcon })
+          originalMarkerRef.current = L.marker([latitude, longitude], { icon: originalIcon })
             .addTo(mapInstanceRef.current)
             .bindPopup(`
               <div style="min-width: 200px;">
-                <strong>${selectedResult.normalized_address || selectedResult.original_address}</strong><br/>
+                <strong>Original Address</strong><br/>
+                ${selectedResult.normalized_address || selectedResult.original_address}<br/>
                 <span style="color: ${iconColor}; font-weight: bold;">
                   Score: ${Math.round(selectedResult.confidence_score)}%
                 </span><br/>
-                <small>Lat: ${latitude.toFixed(4)}, Lng: ${longitude.toFixed(4)}</small>
+                <small>Lat: ${latitude.toFixed(6)}, Lng: ${longitude.toFixed(6)}</small>
               </div>
-            `)
-            .openPopup();
+            `);
           
-          // Center map on the marker
-          mapInstanceRef.current.setView([latitude, longitude], 13, {
-            animate: true,
-            duration: 0.5
-          });
+          // Add confirmed address marker if available
+          if (confirmedAddress && confirmedAddress.coordinates) {
+            const confirmedIcon = L.divIcon({
+              html: `
+                <div style="
+                  background: #10B981;
+                  width: 16px;
+                  height: 16px;
+                  border-radius: 50%;
+                  border: 3px solid white;
+                  box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+                  position: relative;
+                ">
+                  <div style="
+                    position: absolute;
+                    top: -20px;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    background: #10B981;
+                    color: white;
+                    padding: 2px 6px;
+                    border-radius: 4px;
+                    font-size: 10px;
+                    font-weight: bold;
+                    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+                    white-space: nowrap;
+                  ">Confirmed</div>
+                </div>
+              `,
+              className: 'custom-marker-confirmed',
+              iconSize: [16, 16],
+              iconAnchor: [8, 8],
+            });
+            
+            confirmedMarkerRef.current = L.marker(
+              [confirmedAddress.coordinates.latitude, confirmedAddress.coordinates.longitude], 
+              { icon: confirmedIcon }
+            )
+              .addTo(mapInstanceRef.current)
+              .bindPopup(`
+                <div style="min-width: 200px;">
+                  <strong>Confirmed Address</strong><br/>
+                  ${confirmedAddress.address}<br/>
+                  <span style="color: #10B981; font-weight: bold;">
+                    ✓ Confirmed via ${confirmedAddress.confirmation_method}
+                  </span><br/>
+                  <small>Lat: ${confirmedAddress.coordinates.latitude.toFixed(6)}, Lng: ${confirmedAddress.coordinates.longitude.toFixed(6)}</small>
+                </div>
+              `);
+            
+            // Draw a line between original and confirmed locations
+            const latlngs = [
+              [latitude, longitude],
+              [confirmedAddress.coordinates.latitude, confirmedAddress.coordinates.longitude]
+            ];
+            
+            lineRef.current = L.polyline(latlngs, {
+              color: '#6366F1',
+              weight: 2,
+              opacity: 0.6,
+              dashArray: '5, 10'
+            }).addTo(mapInstanceRef.current);
+            
+            // Fit map to show both markers
+            const bounds = L.latLngBounds(latlngs);
+            mapInstanceRef.current.fitBounds(bounds, { padding: [50, 50] });
+          } else {
+            // Center on original marker only
+            mapInstanceRef.current.setView([latitude, longitude], 13, {
+              animate: true,
+              duration: 0.5
+            });
+          }
         }
       } catch (error) {
-        console.error('Error updating marker:', error);
+        console.error('Error updating markers:', error);
       }
     };
 
-    updateMarker();
-  }, [selectedResult]);
+    updateMarkers();
+  }, [selectedResult, confirmedAddress]);
 
   return (
     <div className="bg-white rounded-md border border-gray-200 overflow-hidden h-full">
@@ -503,8 +812,9 @@ function App() {
   const [globalStats, setGlobalStats] = useState(null);
   const [selectedResultIndex, setSelectedResultIndex] = useState(0);
   const [validateSelectedIndex, setValidateSelectedIndex] = useState(0);
-  const [validationMode, setValidationMode] = useState('rule'); // 'rule' or 'llm'
+  const [validationMode, setValidationMode] = useState('llm'); // Always use AI mode
   const [llmAvailable, setLlmAvailable] = useState(false);
+  const [selectedConfirmedAddress, setSelectedConfirmedAddress] = useState(null);
 
   useEffect(() => {
     loadStats();
@@ -534,7 +844,8 @@ function App() {
   };
 
   const handleSingleValidation = (result) => {
-    const newResult = { ...result, id: `VAL${Date.now()}` };
+    // Use the ID from backend if available, otherwise generate one
+    const newResult = { ...result, id: result.id || `VAL${Date.now()}`, source: 'single' };
     setAllProcessedResults(prev => [...prev, newResult]);
     setSelectedResultIndex(allProcessedResults.length);
     loadStats();
@@ -542,7 +853,9 @@ function App() {
   };
 
   const handleBatchComplete = (results) => {
-    setAllProcessedResults(prev => [...prev, ...results]);
+    // Add source field to bulk results
+    const bulkResults = results.map(result => ({ ...result, source: 'bulk' }));
+    setAllProcessedResults(prev => [...prev, ...bulkResults]);
     loadStats();
     setActiveView('processed');
   };
@@ -553,7 +866,7 @@ function App() {
 
   const navigationTabs = [
     { id: 'validate', label: 'Validate', icon: BeakerIcon },
-    { id: 'bulk', label: 'Bulk Upload', icon: CloudArrowUpIcon },
+    // { id: 'bulk', label: 'Bulk Upload', icon: CloudArrowUpIcon }, // Hidden for demo
     { id: 'processed', label: 'Processed', icon: DocumentTextIcon, badge: allProcessedResults.length },
     { id: 'analytics', label: 'Analytics', icon: ChartBarIcon }
   ];
@@ -567,48 +880,18 @@ function App() {
         <div className="px-4">
           <div className="flex items-center justify-between h-12">
             <div className="flex items-center gap-3">
-              <div className="p-1.5 bg-blue-50 rounded">
-                <MapPinIcon className="h-5 w-5 text-blue-600" />
-              </div>
+              <img 
+                src="https://shipsy-public-assets.s3.amazonaws.com/shipsyflamingo/logo.png" 
+                alt="Shipsy" 
+                className="h-8 object-contain"
+              />
               <div className="border-l border-gray-200 pl-3">
                 <h1 className="text-sm font-semibold text-gray-900">AI Address Intelligence</h1>
-                <p className="text-xs text-gray-500">Powered by Shipsy</p>
+                <p className="text-xs text-gray-500">Smart Address Validation</p>
               </div>
             </div>
             
             <div className="flex items-center gap-4">
-              {/* Validation Mode Toggle */}
-              <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
-                <button
-                  onClick={() => setValidationMode('rule')}
-                  className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
-                    validationMode === 'rule' 
-                      ? 'bg-white text-blue-600 shadow-sm' 
-                      : 'text-gray-600 hover:text-gray-800'
-                  }`}
-                >
-                  Rule-Based
-                </button>
-                <button
-                  onClick={() => setValidationMode('llm')}
-                  disabled={!llmAvailable}
-                  className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
-                    validationMode === 'llm' 
-                      ? 'bg-white text-blue-600 shadow-sm' 
-                      : llmAvailable 
-                        ? 'text-gray-600 hover:text-gray-800'
-                        : 'text-gray-400 cursor-not-allowed'
-                  }`}
-                  title={!llmAvailable ? 'LLM not configured. Set GEMINI_API_KEY in backend .env file' : 'Use AI-powered validation'}
-                >
-                  <span className="flex items-center gap-1">
-                    AI (Gemini)
-                    {validationMode === 'llm' && (
-                      <span className="inline-block w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
-                    )}
-                  </span>
-                </button>
-              </div>
               
               <div className="text-right">
                 <p className="text-xs text-gray-500">Total Processed</p>
@@ -665,18 +948,6 @@ function App() {
             >
               {/* Search Bar */}
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 mb-3">
-                <div className="flex items-center justify-between mb-2">
-                  <h2 className="text-xs font-semibold text-gray-700">Quick Address Validation</h2>
-                  <div className="flex items-center gap-2">
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${
-                      validationMode === 'llm' 
-                        ? 'bg-blue-100 text-blue-700' 
-                        : 'bg-gray-100 text-gray-700'
-                    }`}>
-                      {validationMode === 'llm' ? '🤖 AI Mode' : '📋 Rule Mode'}
-                    </span>
-                  </div>
-                </div>
                 <AddressValidator onValidate={handleSingleValidation} validationMode={validationMode} />
               </div>
 
@@ -698,8 +969,12 @@ function App() {
                           <CompactResultTile 
                             key={idx}
                             result={result}
-                            onClick={() => setValidateSelectedIndex(actualIndex)}
+                            onClick={() => {
+                              setValidateSelectedIndex(actualIndex);
+                              setSelectedConfirmedAddress(null); // Reset on selection change
+                            }}
                             isSelected={validateSelectedIndex === actualIndex}
+                            onConfirmedAddressUpdate={setSelectedConfirmedAddress}
                           />
                         );
                       })}
@@ -720,6 +995,7 @@ function App() {
                   <div className="h-[calc(100vh-320px)] rounded overflow-hidden">
                     <MapComponent 
                       selectedResult={allProcessedResults[validateSelectedIndex]}
+                      confirmedAddress={selectedConfirmedAddress}
                     />
                   </div>
                 </div>
@@ -727,8 +1003,8 @@ function App() {
             </motion.div>
           )}
 
-          {/* Bulk Upload View */}
-          {activeView === 'bulk' && (
+          {/* Bulk Upload View - Hidden for demo */}
+          {/* {activeView === 'bulk' && (
             <motion.div
               key="bulk"
               initial={{ opacity: 0 }}
@@ -741,7 +1017,7 @@ function App() {
                 llmAvailable={llmAvailable}
               />
             </motion.div>
-          )}
+          )} */}
 
           {/* Processed View */}
           {activeView === 'processed' && (
@@ -790,8 +1066,12 @@ function App() {
                       <CompactResultTile
                         key={idx}
                         result={result}
-                        onClick={() => handleResultClick(idx)}
+                        onClick={() => {
+                          handleResultClick(idx);
+                          setSelectedConfirmedAddress(null); // Reset on selection change
+                        }}
                         isSelected={selectedResultIndex === idx}
+                        onConfirmedAddressUpdate={setSelectedConfirmedAddress}
                       />
                     ))}
                   </div>
@@ -811,6 +1091,7 @@ function App() {
                 <div className="h-[calc(100vh-200px)] rounded overflow-hidden">
                   <MapComponent 
                     selectedResult={allProcessedResults[selectedResultIndex]}
+                    confirmedAddress={selectedConfirmedAddress}
                   />
                 </div>
               </div>
@@ -824,7 +1105,7 @@ function App() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="grid grid-cols-4 gap-4"
+              className="grid grid-cols-3 gap-4"
             >
               <div className="bg-white rounded-md border border-gray-200 p-4">
                 <DocumentTextIcon className="h-8 w-8 text-blue-500 mb-2" />
@@ -850,16 +1131,8 @@ function App() {
                 </p>
               </div>
 
-              <div className="bg-white rounded-md border border-gray-200 p-4">
-                <ChartBarIcon className="h-8 w-8 text-purple-500 mb-2" />
-                <p className="text-xs text-gray-600">Batch Jobs</p>
-                <p className="text-2xl font-bold text-purple-600">
-                  {globalStats?.completed_jobs || 1}
-                </p>
-              </div>
-
               {/* Session Stats */}
-              <div className="col-span-4 bg-white rounded-md border border-gray-200 p-4">
+              <div className="col-span-3 bg-white rounded-md border border-gray-200 p-4">
                 <h3 className="text-sm font-medium text-gray-700 mb-3">Current Session Statistics</h3>
                 <div className="grid grid-cols-4 gap-4">
                   <div className="text-center p-2 bg-gray-50 rounded">

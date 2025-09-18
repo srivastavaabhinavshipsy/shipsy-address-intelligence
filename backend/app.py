@@ -2,8 +2,8 @@
 AI Address Intelligence Flask Backend API with LLM Support
 """
 
-from flask import Flask, request, jsonify, send_file
-from flask_cors import CORS
+from flask import Flask, request, jsonify, send_file, make_response
+from flask_cors import CORS, cross_origin
 import csv
 import io
 import uuid
@@ -15,24 +15,59 @@ import os
 import requests
 from validator import SAAddressValidator
 from dotenv import load_dotenv
+import threading
 
 # Load environment variables
 load_dotenv()
 
 app = Flask(__name__)
-# Enable CORS for all routes and origins with ngrok support
-CORS(app, 
-     resources={r"/*": {"origins": "*"}},
-     methods=["GET", "POST", "OPTIONS", "HEAD"],
-     allow_headers=["Content-Type", "Authorization", "ngrok-skip-browser-warning"],
-     expose_headers=["Content-Length", "Content-Type"],
-     supports_credentials=True)
+
+# Simple CORS configuration that works
+app.config['CORS_HEADERS'] = 'Content-Type'
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 # Initialize validators
 validator = SAAddressValidator()  # Rule-based validator
 
 # Initialize LLM validator (will be created on demand if API key is available)
 llm_validator = None
+
+# Virtual number management
+virtual_numbers_lock = threading.Lock()
+available_virtual_numbers = []
+used_virtual_numbers = []
+
+def load_virtual_numbers():
+    """Load virtual numbers from JSON file"""
+    global available_virtual_numbers
+    try:
+        with open('virtual_numbers.json', 'r') as f:
+            available_virtual_numbers = json.load(f)
+        print(f"Loaded {len(available_virtual_numbers)} virtual numbers")
+    except Exception as e:
+        print(f"Failed to load virtual numbers: {e}")
+        available_virtual_numbers = []
+
+def get_next_virtual_number():
+    """Get the next available virtual number"""
+    global available_virtual_numbers, used_virtual_numbers
+    with virtual_numbers_lock:
+        if available_virtual_numbers:
+            number = available_virtual_numbers.pop(0)
+            used_virtual_numbers.append(number)
+            # Save the updated list back to file
+            try:
+                with open('virtual_numbers.json', 'w') as f:
+                    json.dump(available_virtual_numbers, f, indent=2)
+            except Exception as e:
+                print(f"Failed to save virtual numbers: {e}")
+            return number
+        else:
+            # Fallback to generated ID if no virtual numbers available
+            return f"VAL{int(time.time()*1000)}"
+
+# Load virtual numbers on startup
+load_virtual_numbers()
 
 def get_llm_validator():
     """Get or create LLM validator instance"""
@@ -51,12 +86,10 @@ def get_llm_validator():
 # In-memory storage for batch jobs
 batch_jobs = {}
 
-@app.route('/api/validate-single', methods=['POST', 'OPTIONS'])
+@app.route('/api/validate-single', methods=['POST'])
+@cross_origin()
 def validate_single():
     """Validate a single address with option for LLM or rule-based"""
-    # Handle preflight OPTIONS request
-    if request.method == 'OPTIONS':
-        return '', 204
         
     try:
         data = request.get_json()
@@ -68,7 +101,7 @@ def validate_single():
             }), 400
         
         address = data['address'].strip()
-        validation_mode = data.get('validation_mode', 'rule')  # 'rule' or 'llm'
+        validation_mode = data.get('validation_mode', 'llm')  # Always use AI mode (llm)
         
         if not address:
             return jsonify({
@@ -87,6 +120,7 @@ def validate_single():
                     processing_time = round((time.time() - start_time) * 1000, 2)
                     result['processing_time_ms'] = processing_time
                     result['timestamp'] = datetime.now().isoformat()
+                    result['id'] = get_next_virtual_number()  # Assign virtual number
                     print(f"LLM validation successful: {result.get('confidence_score')}%")
                     return jsonify(result), 200
                 except Exception as e:
@@ -99,6 +133,7 @@ def validate_single():
                     response['timestamp'] = datetime.now().isoformat()
                     response['validation_method'] = 'rule (fallback)'
                     response['llm_error'] = str(e)
+                    response['id'] = get_next_virtual_number()  # Assign virtual number
                     return jsonify(response), 200
             else:
                 return jsonify({
@@ -114,6 +149,7 @@ def validate_single():
         response['processing_time_ms'] = processing_time
         response['timestamp'] = datetime.now().isoformat()
         response['validation_method'] = 'rule'
+        response['id'] = get_next_virtual_number()  # Assign virtual number
         
         print(f"Validation complete: {response['confidence_score']}% confidence")
         return jsonify(response), 200
@@ -127,13 +163,12 @@ def validate_single():
             "message": str(e)
         }), 500
 
-@app.route('/api/validate-batch', methods=['POST', 'OPTIONS'])
+@app.route('/api/validate-batch', methods=['POST'])
+@cross_origin()
 def validate_batch():
     """Process batch validation from CSV with option for LLM or rule-based"""
-    if request.method == 'OPTIONS':
-        return '', 204
         
-    validation_mode = request.form.get('validation_mode', 'rule')  # Get from form data
+    validation_mode = request.form.get('validation_mode', 'llm')  # Always use AI mode (llm)
     
     if 'file' not in request.files:
         # Try to get CSV content from request body
@@ -143,7 +178,7 @@ def validate_batch():
             
         csv_content = data['csv_content']
         csv_file = io.StringIO(csv_content)
-        validation_mode = data.get('validation_mode', 'rule')  # Also check JSON data
+        validation_mode = data.get('validation_mode', 'llm')  # Always use AI mode (llm)
     else:
         file = request.files['file']
         if file.filename == '':
@@ -301,11 +336,10 @@ def validate_batch():
             "message": str(e)
         }), 500
 
-@app.route('/api/batch-status/<job_id>', methods=['GET', 'OPTIONS'])
+@app.route('/api/batch-status/<job_id>', methods=['GET'])
+@cross_origin()
 def get_batch_status(job_id):
     """Get status of a batch job"""
-    if request.method == 'OPTIONS':
-        return '', 204
         
     if job_id not in batch_jobs:
         return jsonify({"error": "Job not found"}), 404
@@ -313,11 +347,10 @@ def get_batch_status(job_id):
     job = batch_jobs[job_id]
     return jsonify(job)
 
-@app.route('/api/batch-results/<job_id>', methods=['GET', 'OPTIONS'])
+@app.route('/api/batch-results/<job_id>', methods=['GET'])
+@cross_origin()
 def get_batch_results(job_id):
     """Download batch results as CSV"""
-    if request.method == 'OPTIONS':
-        return '', 204
         
     if job_id not in batch_jobs:
         return jsonify({"error": "Job not found"}), 404
@@ -372,11 +405,10 @@ def get_batch_results(job_id):
         as_attachment=True
     )
 
-@app.route('/api/stats', methods=['GET', 'OPTIONS'])
+@app.route('/api/stats', methods=['GET'])
+@cross_origin()
 def get_stats():
     """Get validation statistics"""
-    if request.method == 'OPTIONS':
-        return '', 204
         
     # Calculate stats from batch jobs
     total_validated = sum(job.get("processed", 0) for job in batch_jobs.values())
@@ -418,11 +450,42 @@ def get_stats():
         "llm_available": get_llm_validator() is not None
     })
 
-@app.route('/api/trigger-agent', methods=['POST', 'OPTIONS'])
+@app.route('/api/confirmed-address/<virtual_number>', methods=['GET'])
+@cross_origin()
+def get_confirmed_address(virtual_number):
+    """Get confirmed address for a validation (mock endpoint)"""
+    import random
+    
+    # Mock data - replace with real database lookup later
+    if random.random() > 0.3:  # 70% chance of having confirmed address
+        return jsonify({
+            "virtual_number": virtual_number,
+            "confirmed_address": {
+                "address": f"Confirmed address for {virtual_number}",
+                "coordinates": {
+                    "latitude": -26.2041 + (random.random() * 0.01 - 0.005),
+                    "longitude": 28.0473 + (random.random() * 0.01 - 0.005)
+                },
+                "confirmed_by": "Customer",
+                "confirmed_at": datetime.now().isoformat(),
+                "confirmation_method": "call" if random.random() > 0.5 else "whatsapp",
+                "differences": {
+                    "street_number": "Updated",
+                    "postal_code": "Corrected"
+                }
+            },
+            "status": "confirmed"
+        })
+    else:
+        return jsonify({
+            "virtual_number": virtual_number,
+            "status": "pending"
+        })
+
+@app.route('/api/trigger-agent', methods=['POST'])
+@cross_origin()
 def trigger_agent():
     """Trigger Shipsy agent for address resolution"""
-    if request.method == 'OPTIONS':
-        return '', 204
     
     try:
         data = request.get_json()
@@ -430,60 +493,118 @@ def trigger_agent():
         # Extract address details from request
         address = data.get('address', '')
         action_type = data.get('action_type', 'call')  # 'call' or 'whatsapp'
+        issues = data.get('issues', [])  # Get issues from frontend
+        confidence_score = data.get('confidence_score', 0)
+        contact_number = data.get('contact_number', '+27812345678')  # Get contact number from frontend
         
-        # Parse address to extract components
-        result = validator.validate_address(address)
-        components = result.components
+        # Use LLM to validate and get detailed info
+        llm = get_llm_validator()
+        if llm:
+            try:
+                result = llm.validate_address(address)
+                components = result.get('components', {})
+                coordinates = result.get('coordinates', {})
+                # Use LLM issues if frontend didn't send any
+                if not issues:
+                    issues = result.get('issues', [])
+            except:
+                # Fallback to rule-based if LLM fails
+                result = validator.validate_address(address)
+                components = result.components
+                coordinates = result.coordinates
+                if not issues:
+                    issues = result.issues
+        else:
+            # Use rule-based validator
+            result = validator.validate_address(address)
+            components = result.components
+            coordinates = result.coordinates
+            if not issues:
+                issues = result.issues
         
-        # Prepare payload for Shipsy agent
+        # Generate a unique reference number
+        reference_number = str(uuid.uuid4())
+        
+        # Prepare payload for Shipsy agent API with new structure
         agent_payload = {
-            "customer_phone_number": "+917702189930",  # Updated phone number
-            "reference_number": f"ADDR_{int(time.time())}",
-            "customer_name": "Customer",
-            "shipment_description": "Address Verification",
-            "cod_amount": "0",
+            "customer_phone_number": contact_number,  # Use the contact number from frontend
+            "reference_number": reference_number,
+            "customer_name": "Customer",  # Generic customer name
+            "shipment_description": f"Address Verification - Score: {confidence_score}%",
             "address_details": {
                 "address_line_1": address,
                 "pincode": components.get('postal_code', ''),
                 "city": components.get('city', ''),
                 "country": "South Africa",
-                "latitude": str(result.coordinates.get('latitude', '')) if result.coordinates else '',
-                "longitude": str(result.coordinates.get('longitude', '')) if result.coordinates else ''
+                "latitude": str(coordinates.get('latitude', '')) if coordinates else '',
+                "longitude": str(coordinates.get('longitude', '')) if coordinates else ''
             },
-            "preferred_language": "en"
+            "preferred_language": "en",
+            "status": "",
+            "custom_parameters": {
+                "issues": issues  # Pass issues as array in custom_parameters
+            }
         }
         
-        # Try to make API call to Shipsy agent
+        # Determine the correct API endpoint based on action type
+        if action_type == 'whatsapp':
+            api_url = "https://agent.shipsy.tech/api/v1/agent/whatsapp/address_resolution/aramexapp/create"
+        else:  # voice_call
+            api_url = "https://agent.shipsy.tech/api/v1/agent/voice_call/address_resolution/aramexapp/create"
+        
+        print(f"Calling Shipsy API for {action_type}")
+        print(f"API URL: {api_url}")
+        print(f"Customer: Customer")
+        print(f"Phone: {contact_number}")
+        print(f"Reference Number: {reference_number}")
+        print(f"Issues being sent: {issues}")
+        
         try:
-            shipsy_response = requests.post(
-                'https://agent.shipsy.tech/api/v1/agent/address_resolution/aramexapp/create',
+            response = requests.post(
+                api_url,
+                json=agent_payload,
                 headers={
-                    'api-key': 'jsdbfjhsbdfjhsdbfuguwer9238749832kdssi89',
+                    'api-key': 'jsdbfjhsbdfjhsdbfuguwer9238749832kdssi89',  # Added API key
                     'Content-Type': 'application/json'
                 },
-                json=agent_payload,
-                timeout=5
+                timeout=10
             )
             
-            if shipsy_response.status_code == 200:
+            if response.status_code == 200 or response.status_code == 201:
+                api_response = response.json()
+                print(f"Shipsy API response: {api_response}")
+                
                 return jsonify({
                     "success": True,
-                    "message": f"Agent triggered for {action_type}",
-                    "reference_number": agent_payload["reference_number"],
-                    "response": shipsy_response.json()
+                    "message": f"Agent triggered successfully for {action_type}",
+                    "reference_number": reference_number,
+                    "phone_number": contact_number,
+                    "customer_name": "Customer",
+                    "action": action_type,
+                    "address": address,
+                    "issues_sent": issues,
+                    "shipsy_response": api_response
                 })
             else:
-                raise Exception(f"API returned status {shipsy_response.status_code}")
+                print(f"Shipsy API error: {response.status_code} - {response.text}")
+                return jsonify({
+                    "success": False,
+                    "error": f"Shipsy API error: {response.status_code}",
+                    "details": response.text
+                }), response.status_code
                 
-        except requests.exceptions.RequestException as e:
-            print(f"Failed to connect to Shipsy API: {e}")
-            # Return success anyway (demo mode)
+        except requests.exceptions.Timeout:
+            print("Shipsy API timeout")
             return jsonify({
-                "success": True,
-                "message": f"Agent triggered for {action_type} (Demo Mode)",
-                "reference_number": agent_payload["reference_number"],
-                "demo_mode": True
-            })
+                "success": False,
+                "error": "API timeout - please try again"
+            }), 504
+        except requests.exceptions.RequestException as e:
+            print(f"Request error: {str(e)}")
+            return jsonify({
+                "success": False,
+                "error": f"Failed to connect to Shipsy API: {str(e)}"
+            }), 503
             
     except Exception as e:
         print(f"Error in trigger_agent: {str(e)}")
@@ -493,6 +614,7 @@ def trigger_agent():
         }), 500
 
 @app.route('/health', methods=['GET'])
+@cross_origin()
 def health():
     llm_status = "available" if get_llm_validator() else "not configured"
     return jsonify({
@@ -502,6 +624,7 @@ def health():
     })
 
 @app.route('/', methods=['GET'])
+@cross_origin()
 def home():
     return jsonify({
         "name": "AI Address Intelligence API",
@@ -515,14 +638,14 @@ def home():
             "/api/trigger-agent",
             "/health"
         ],
-        "validation_modes": ["rule", "llm"],
+        "validation_mode": "AI-powered (Gemini 2.5 Pro)",
         "llm_status": "available" if get_llm_validator() else "not configured (set GEMINI_API_KEY in .env)"
     })
 
 if __name__ == '__main__':
     # Check for LLM availability on startup
     if get_llm_validator():
-        print("✅ LLM validator is available (Gemini 2.5 Flash)")
+        print("✅ LLM validator is available (Gemini 2.5 Pro)")
     else:
         print("⚠️  LLM validator not configured. Set GEMINI_API_KEY in .env file to enable.")
     
