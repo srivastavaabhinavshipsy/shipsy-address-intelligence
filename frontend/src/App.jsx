@@ -22,60 +22,8 @@ import { addressAPI } from './services/api';
 // import BulkProcessor from './components/BulkProcessor'; // Hidden for demo
 import toast from 'react-hot-toast';
 
-// Sample demo data
-const DEMO_DATA = [
-  {
-    id: 'CRNSEP001',
-    original_address: '123 Main Street, Cape Town, Western Cape, 8001',
-    normalized_address: '123 Main Street, Cape Town, Western Cape, 8001',
-    confidence_score: 95,
-    confidence_level: 'CONFIDENT',
-    coordinates: { latitude: -33.9249, longitude: 18.4241 },
-    issues: [],
-    suggestions: [],
-    components: {
-      street_address: '123 Main Street',
-      city: 'Cape Town',
-      province: 'Western Cape',
-      postal_code: '8001'
-    },
-    source: 'single',
-    validation_method: 'llm'
-  },
-  {
-    id: 'CRNSEP002',
-    original_address: '456 Beach Road, Durban',
-    normalized_address: '456 Beach Road, Durban, KwaZulu-Natal',
-    confidence_score: 72,
-    confidence_level: 'LIKELY',
-    coordinates: { latitude: -29.8587, longitude: 31.0218 },
-    issues: ['Missing postal code'],
-    suggestions: ['Add postal code for better accuracy'],
-    components: {
-      street_address: '456 Beach Road',
-      city: 'Durban',
-      province: 'KwaZulu-Natal'
-    },
-    source: 'single',
-    validation_method: 'llm'
-  },
-  {
-    id: 'CRNSEP003',
-    original_address: 'Johannesburg, Gauteng',
-    normalized_address: 'Johannesburg, Gauteng',
-    confidence_score: 45,
-    confidence_level: 'SUSPICIOUS',
-    coordinates: { latitude: -26.2041, longitude: 28.0473 },
-    issues: ['Missing street address', 'Missing postal code'],
-    suggestions: ['Provide street address', 'Add postal code'],
-    components: {
-      city: 'Johannesburg',
-      province: 'Gauteng'
-    },
-    source: 'single',
-    validation_method: 'llm'
-  }
-];
+// Start with empty data - all validations will be real from now on
+const INITIAL_DATA = [];
 
 // Compact Address Validator Component
 const AddressValidator = ({ onValidate, validationMode }) => {
@@ -231,39 +179,57 @@ const AddressValidator = ({ onValidate, validationMode }) => {
 const CompactResultTile = ({ result, onClick, isSelected, onAction, onConfirmedAddressUpdate }) => {
   const [actionLoading, setActionLoading] = useState({ call: false, whatsapp: false });
   const [isExpanded, setIsExpanded] = useState(false);
-  const [confirmedAddress, setConfirmedAddress] = useState(null);
+  const [confirmedAddress, setConfirmedAddress] = useState(result.confirmed_address || null);
   const [loadingConfirmed, setLoadingConfirmed] = useState(false);
+  const [agentTriggered, setAgentTriggered] = useState(result.agent_triggered || false);
   
-  // Simulate fetching confirmed address (replace with real API later)
+  // Reset state when result changes (different CN)
   useEffect(() => {
-    // Only fetch if confidence score < 90 (addresses that needed confirmation)
-    if (result.confidence_score < 90) {
+    setConfirmedAddress(result.confirmed_address || null);
+    setAgentTriggered(result.agent_triggered || false);
+  }, [result.id]);
+
+  // Fetch confirmed address only after agent has been triggered
+  useEffect(() => {
+    // Only fetch if confidence score < 90 AND agent has been triggered AND no confirmed address yet
+    if (result.confidence_score < 90 && agentTriggered && !confirmedAddress) {
       fetchConfirmedAddress();
     }
-  }, [result.id]);
+  }, [result.id, agentTriggered]);
   
   const fetchConfirmedAddress = async () => {
     setLoadingConfirmed(true);
     try {
-      // Simulated API call - replace with real endpoint
-      await new Promise(resolve => setTimeout(resolve, 500));
+      const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
       
-      // Mock confirmed address data
-      const mockConfirmed = {
-        address: result.normalized_address + ' (Confirmed)',
-        coordinates: {
-          latitude: result.coordinates?.latitude + (Math.random() * 0.002 - 0.001),
-          longitude: result.coordinates?.longitude + (Math.random() * 0.002 - 0.001)
-        },
-        confirmed_by: 'Customer',
-        confirmed_at: new Date().toISOString(),
-        confirmation_method: Math.random() > 0.5 ? 'call' : 'whatsapp'
-      };
+      // Call real API endpoint with virtual number
+      const response = await fetch(`${API_URL}/api/confirmed-address/${result.id}`, {
+        headers: { 
+          'ngrok-skip-browser-warning': 'true'
+        }
+      });
       
-      setConfirmedAddress(mockConfirmed);
-      // Notify parent component if selected
-      if (isSelected && onConfirmedAddressUpdate) {
-        onConfirmedAddressUpdate(mockConfirmed);
+      if (response.ok) {
+        const data = await response.json();
+        
+        if (data.status === 'confirmed' && data.confirmed_address) {
+          const confirmedData = {
+            address: data.confirmed_address.address,
+            coordinates: data.confirmed_address.coordinates,
+            confirmed_by: data.confirmed_address.confirmed_by || 'Customer',
+            confirmed_at: data.confirmed_address.confirmed_at,
+            confirmation_method: data.confirmed_address.confirmation_method,
+            differences: data.confirmed_address.differences
+          };
+          
+          setConfirmedAddress(confirmedData);
+          
+          // Notify parent component if selected
+          if (isSelected && onConfirmedAddressUpdate) {
+            onConfirmedAddressUpdate(confirmedData);
+          }
+        }
+        // If status is 'pending', confirmed address remains null
       }
     } catch (error) {
       console.error('Failed to fetch confirmed address:', error);
@@ -271,6 +237,17 @@ const CompactResultTile = ({ result, onClick, isSelected, onAction, onConfirmedA
       setLoadingConfirmed(false);
     }
   };
+  
+  // Poll for confirmed address updates periodically after agent trigger
+  useEffect(() => {
+    if (result.confidence_score < 90 && agentTriggered && !confirmedAddress) {
+      const interval = setInterval(() => {
+        fetchConfirmedAddress();
+      }, 15000); // Poll every 15 seconds
+      
+      return () => clearInterval(interval);
+    }
+  }, [result.id, confirmedAddress, agentTriggered]);
   
   // Update parent when selection changes
   useEffect(() => {
@@ -301,22 +278,26 @@ const CompactResultTile = ({ result, onClick, isSelected, onAction, onConfirmedA
           action_type: actionType,
           issues: result.issues || [],
           confidence_score: result.confidence_score,
-          contact_number: contactNum
+          contact_number: contactNum,
+          virtual_number: result.id,  // Pass the virtual number as reference
+          components: result.components || {},  // Pass already validated components
+          coordinates: result.coordinates || {}  // Pass already validated coordinates
         })
       });
 
       if (!response.ok) {
-        console.error('Response not OK:', response.status, response.statusText);
         throw new Error(`Server error: ${response.status}`);
       }
       
       const data = await response.json();
-      console.log('Agent trigger response:', data);
       
       // Dismiss loading toast
       toast.dismiss(actionType);
       
       if (data.success) {
+        // Mark that agent has been triggered
+        setAgentTriggered(true);
+        
         // Enhanced toast notifications based on action type
         if (actionType === 'call') {
           toast.success(
@@ -493,8 +474,8 @@ const CompactResultTile = ({ result, onClick, isSelected, onAction, onConfirmedA
             className="overflow-hidden"
           >
             <div className="pt-2 space-y-2">
-              {/* Confirmed Address Section */}
-              {result.confidence_score < 90 && (
+              {/* Confirmed Address Section - Only show after agent trigger */}
+              {result.confidence_score < 90 && agentTriggered && (
                 <div className={`rounded p-2 border ${confirmedAddress ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'}`}>
                   <div className="flex items-center justify-between mb-1">
                     <h5 className="text-xs font-semibold text-gray-700">Customer Confirmed Address:</h5>
@@ -685,13 +666,13 @@ const MapComponent = ({ selectedResult, confirmedAddress }) => {
               ">
                 <div style="
                   position: absolute;
-                  top: -20px;
+                  top: -26px;
                   left: 50%;
                   transform: translateX(-50%);
                   background: white;
-                  padding: 2px 6px;
+                  padding: 3px 8px;
                   border-radius: 4px;
-                  font-size: 10px;
+                  font-size: 11px;
                   font-weight: bold;
                   box-shadow: 0 1px 3px rgba(0,0,0,0.2);
                   white-space: nowrap;
@@ -699,8 +680,8 @@ const MapComponent = ({ selectedResult, confirmedAddress }) => {
               </div>
             `,
             className: 'custom-marker-original',
-            iconSize: [16, 16],
-            iconAnchor: [8, 8],
+            iconSize: [24, 24],
+            iconAnchor: [12, 12],
           });
           
           originalMarkerRef.current = L.marker([latitude, longitude], { icon: originalIcon })
@@ -722,8 +703,8 @@ const MapComponent = ({ selectedResult, confirmedAddress }) => {
               html: `
                 <div style="
                   background: #10B981;
-                  width: 16px;
-                  height: 16px;
+                  width: 24px;
+                  height: 24px;
                   border-radius: 50%;
                   border: 3px solid white;
                   box-shadow: 0 2px 6px rgba(0,0,0,0.4);
@@ -731,14 +712,14 @@ const MapComponent = ({ selectedResult, confirmedAddress }) => {
                 ">
                   <div style="
                     position: absolute;
-                    top: -20px;
+                    top: -26px;
                     left: 50%;
                     transform: translateX(-50%);
                     background: #10B981;
                     color: white;
-                    padding: 2px 6px;
+                    padding: 3px 8px;
                     border-radius: 4px;
-                    font-size: 10px;
+                    font-size: 11px;
                     font-weight: bold;
                     box-shadow: 0 1px 3px rgba(0,0,0,0.2);
                     white-space: nowrap;
@@ -779,9 +760,18 @@ const MapComponent = ({ selectedResult, confirmedAddress }) => {
               dashArray: '5, 10'
             }).addTo(mapInstanceRef.current);
             
-            // Fit map to show both markers
+            // Fit map to show both markers with better visibility
             const bounds = L.latLngBounds(latlngs);
-            mapInstanceRef.current.fitBounds(bounds, { padding: [50, 50] });
+            mapInstanceRef.current.fitBounds(bounds, { 
+              padding: [100, 100],  // More padding for better visibility
+              maxZoom: 14  // Don't zoom in too much, keep context visible
+            });
+            
+            // If markers are very close, ensure minimum zoom
+            const currentZoom = mapInstanceRef.current.getZoom();
+            if (currentZoom > 16) {
+              mapInstanceRef.current.setZoom(15);
+            }
           } else {
             // Center on original marker only
             mapInstanceRef.current.setView([latitude, longitude], 13, {
@@ -808,7 +798,7 @@ const MapComponent = ({ selectedResult, confirmedAddress }) => {
 // Main App Component
 function App() {
   const [activeView, setActiveView] = useState('validate');
-  const [allProcessedResults, setAllProcessedResults] = useState(DEMO_DATA);
+  const [allProcessedResults, setAllProcessedResults] = useState(INITIAL_DATA);
   const [globalStats, setGlobalStats] = useState(null);
   const [selectedResultIndex, setSelectedResultIndex] = useState(0);
   const [validateSelectedIndex, setValidateSelectedIndex] = useState(0);
@@ -819,6 +809,7 @@ function App() {
   useEffect(() => {
     loadStats();
     checkLLMAvailability();
+    loadSavedAddresses();
   }, []);
   
   const checkLLMAvailability = async () => {
@@ -840,6 +831,49 @@ function App() {
       setGlobalStats(data);
     } catch (error) {
       console.error('Failed to load stats:', error);
+    }
+  };
+
+  const loadSavedAddresses = async () => {
+    try {
+      const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+      const response = await fetch(`${API_URL}/api/addresses/all`, {
+        headers: { 'ngrok-skip-browser-warning': 'true' }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.addresses && data.addresses.length > 0) {
+          // Transform the saved addresses to match our frontend format
+          const savedAddresses = data.addresses.map(addr => ({
+            id: addr.virtual_number,
+            original_address: addr.original_address,
+            normalized_address: addr.normalized_address,
+            confidence_score: addr.confidence_score,
+            confidence_level: addr.confidence_level,
+            coordinates: addr.coordinates,
+            issues: addr.issues,
+            suggestions: addr.suggestions,
+            components: addr.components,
+            contact_number: addr.contact_number,
+            validation_method: addr.validation_method,
+            timestamp: addr.created_at,
+            source: 'database',
+            agent_triggered: addr.agent_triggered || false,
+            confirmed_address: addr.confirmed_address || null  // Include if exists and agent was triggered
+          }));
+          
+          setAllProcessedResults(savedAddresses);
+          
+          // Select the first result if any
+          if (savedAddresses.length > 0) {
+            setSelectedResultIndex(0);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load saved addresses:', error);
+      // If loading fails, keep INITIAL_DATA as fallback
     }
   };
 
@@ -967,7 +1001,7 @@ function App() {
                         const actualIndex = allProcessedResults.length - 1 - idx;
                         return (
                           <CompactResultTile 
-                            key={idx}
+                            key={result.id || `validate-${idx}`}  // Use virtual_number as key to prevent cross-contamination
                             result={result}
                             onClick={() => {
                               setValidateSelectedIndex(actualIndex);
@@ -1062,18 +1096,21 @@ function App() {
                 {/* Results Grid */}
                 <div className="p-2 max-h-[calc(100vh-180px)] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
                   <div className="grid grid-cols-1 gap-1.5">
-                    {allProcessedResults.map((result, idx) => (
-                      <CompactResultTile
-                        key={idx}
-                        result={result}
-                        onClick={() => {
-                          handleResultClick(idx);
-                          setSelectedConfirmedAddress(null); // Reset on selection change
-                        }}
-                        isSelected={selectedResultIndex === idx}
-                        onConfirmedAddressUpdate={setSelectedConfirmedAddress}
-                      />
-                    ))}
+                    {allProcessedResults.slice().reverse().map((result, idx) => {
+                      const actualIndex = allProcessedResults.length - 1 - idx;
+                      return (
+                        <CompactResultTile
+                          key={result.id || idx}  // Use virtual_number as key to prevent cross-contamination
+                          result={result}
+                          onClick={() => {
+                            handleResultClick(actualIndex);
+                            setSelectedConfirmedAddress(null); // Reset on selection change
+                          }}
+                          isSelected={selectedResultIndex === actualIndex}
+                          onConfirmedAddressUpdate={setSelectedConfirmedAddress}
+                        />
+                      );
+                    })}
                   </div>
                 </div>
               </div>

@@ -1,0 +1,51 @@
+version: '3.8'
+
+# Development version with hot-reload and volume mounts
+services:
+  backend-dev:
+    build: ./backend
+    container_name: address-validation-backend-dev
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=1
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - PORT=5000
+    volumes:
+      - ./backend:/app  # Mount entire backend directory for hot-reload
+      - backend-data:/app/data
+    networks:
+      - app-network
+    restart: unless-stopped
+    command: ["python", "-u", "app.py"]  # Unbuffered output for development
+
+  frontend-dev:
+    build: 
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: address-validation-frontend-dev
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost:5000
+      - NODE_ENV=development
+      - CHOKIDAR_USEPOLLING=true  # For hot-reload in Docker
+    volumes:
+      - ./frontend/src:/app/src  # Mount source for hot-reload
+      - ./frontend/public:/app/public
+    depends_on:
+      - backend-dev
+    networks:
+      - app-network
+    restart: unless-stopped
+    stdin_open: true  # For React development server
+    tty: true
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  backend-data:
+    driver: local
