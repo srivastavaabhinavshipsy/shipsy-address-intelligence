@@ -9,6 +9,8 @@ import io
 import uuid
 import json
 import time
+import random
+import string
 from datetime import datetime
 from typing import List, Dict
 import os
@@ -834,6 +836,14 @@ def trigger_agent():
         # Use virtual number as reference_number (or generate if not provided)
         reference_number = virtual_number if virtual_number else str(uuid.uuid4())
         
+        # Generate unique 7-character alphanumeric task_id
+        def generate_task_id():
+            """Generate a unique 7-character alphanumeric string"""
+            chars = string.ascii_uppercase + string.ascii_lowercase + string.digits
+            return ''.join(random.choice(chars) for _ in range(7))
+        
+        unique_task_id = generate_task_id()
+        
         # Determine the correct API endpoint based on action type
         if action_type == 'whatsapp':
             api_url = "https://agent.shipsy.tech/api/v1/agent/whatsapp/address_resolution/aramexapp/create"
@@ -858,7 +868,7 @@ def trigger_agent():
             "status": "",
             "custom_parameters": {
                 "issues": issues,  # Pass issues as array in custom_parameters
-                "task_id": reference_number  # Add task_id with reference_number value for voice_call
+                "task_id": unique_task_id  # Add unique 7-character task_id for voice_call
             }
         }
         
