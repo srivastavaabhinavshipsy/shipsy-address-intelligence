@@ -844,7 +844,7 @@ def trigger_agent():
         agent_payload = {
             "customer_phone_number": contact_number,  # Use the contact number from frontend
             "reference_number": reference_number,  # Using virtual number as reference
-            "customer_name": "Customer",  # Generic customer name
+            "customer_name": "there",  # Generic customer name
             "shipment_description": f"Address Verification - Score: {confidence_score}%",
             "address_details": {
                 "address_line_1": address,
@@ -857,7 +857,8 @@ def trigger_agent():
             "preferred_language": "en",
             "status": "",
             "custom_parameters": {
-                "issues": issues  # Pass issues as array in custom_parameters
+                "issues": issues,  # Pass issues as array in custom_parameters
+                "task_id": reference_number  # Add task_id with reference_number value for voice_call
             }
         }
         
@@ -993,12 +994,12 @@ def background_polling():
                 
                 pass
                 
-            # Wait 15 seconds before next poll cycle
-            time.sleep(15)
+            # Wait 180 seconds before next poll cycle
+            time.sleep(180)
             
         except Exception as e:
             pass
-            time.sleep(30)
+            time.sleep(180)
 
 def start_background_polling():
     """Start the background polling thread"""

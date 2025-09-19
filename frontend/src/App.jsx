@@ -36,19 +36,26 @@ const AddressValidator = ({ onValidate, validationMode }) => {
     // Remove spaces and special characters
     const cleaned = number.replace(/[\s\-\(\)]/g, '');
     
+    // COMMENTED OUT SA VALIDATION - Now accepts any phone number
     // Test numbers that are always accepted
     const testNumbers = ['+917985645346', '+919807872810'];
     if (testNumbers.includes(cleaned)) {
       return true;
     }
     
+    // Accept any phone number with basic validation
+    // Must have at least 10 digits (international or local format)
+    // Can start with + for international numbers
+    const basicPhoneRegex = /^(\+)?[0-9]{10,15}$/;
+    return basicPhoneRegex.test(cleaned);
+    
+    // ORIGINAL SA VALIDATION (COMMENTED OUT):
     // South African phone number patterns:
     // +27 followed by 9 digits (international format)
     // 0 followed by 9 digits (local format)
     // Mobile numbers typically start with 06, 07, 08
-    const saPhoneRegex = /^(\+27|0)[6-8][0-9]{8}$/;
-    
-    return saPhoneRegex.test(cleaned);
+    // const saPhoneRegex = /^(\+27|0)[6-8][0-9]{8}$/;
+    // return saPhoneRegex.test(cleaned);
   };
 
   const formatPhoneNumber = (value) => {
@@ -66,7 +73,7 @@ const AddressValidator = ({ onValidate, validationMode }) => {
     }
     
     if (!validateSouthAfricanNumber(contactNumber)) {
-      toast.error('Please enter a valid South African mobile number (e.g., +27812345678 or 0812345678)');
+      toast.error('Please enter a valid phone number (10-15 digits, can start with +)');
       return;
     }
     
@@ -243,7 +250,7 @@ const CompactResultTile = ({ result, onClick, isSelected, onAction, onConfirmedA
     if (result.confidence_score < 90 && agentTriggered && !confirmedAddress) {
       const interval = setInterval(() => {
         fetchConfirmedAddress();
-      }, 15000); // Poll every 15 seconds
+      }, 180000); // Poll every 180 seconds (3 minutes)
       
       return () => clearInterval(interval);
     }
@@ -499,8 +506,8 @@ const CompactResultTile = ({ result, onClick, isSelected, onAction, onConfirmedA
                     <div className="space-y-1">
                       <p className="text-xs text-green-700 font-medium">{confirmedAddress.address}</p>
                       <div className="flex gap-3 text-xs text-gray-600">
-                        <span>📍 Lat: {confirmedAddress.coordinates.latitude.toFixed(6)}</span>
-                        <span>Lng: {confirmedAddress.coordinates.longitude.toFixed(6)}</span>
+                        <span>📍 Lat: {confirmedAddress.coordinates?.latitude?.toFixed(6) || 'N/A'}</span>
+                        <span>Lng: {confirmedAddress.coordinates?.longitude?.toFixed(6) || 'N/A'}</span>
                       </div>
                       <p className="text-xs text-gray-500">
                         Confirmed {new Date(confirmedAddress.confirmed_at).toLocaleDateString()} via {confirmedAddress.confirmation_method}
@@ -553,8 +560,8 @@ const CompactResultTile = ({ result, onClick, isSelected, onAction, onConfirmedA
               {/* Coordinates */}
               {result.coordinates && (
                 <div className="flex gap-2 text-xs">
-                  <span className="text-gray-500">Lat: {result.coordinates.latitude.toFixed(4)}</span>
-                  <span className="text-gray-500">Lng: {result.coordinates.longitude.toFixed(4)}</span>
+                  <span className="text-gray-500">Lat: {result.coordinates?.latitude?.toFixed(4) || 'N/A'}</span>
+                  <span className="text-gray-500">Lng: {result.coordinates?.longitude?.toFixed(4) || 'N/A'}</span>
                 </div>
               )}
             </div>
@@ -644,8 +651,18 @@ const MapComponent = ({ selectedResult, confirmedAddress }) => {
           lineRef.current = null;
         }
 
-        // Add marker for original address
-        if (selectedResult && selectedResult.coordinates) {
+        // Check if we have original address coordinates
+        const hasOriginalCoords = selectedResult && selectedResult.coordinates && 
+            selectedResult.coordinates.latitude != null && 
+            selectedResult.coordinates.longitude != null;
+        
+        // Check if we have confirmed address coordinates
+        const hasConfirmedCoords = confirmedAddress && confirmedAddress.coordinates && 
+            confirmedAddress.coordinates.latitude != null && 
+            confirmedAddress.coordinates.longitude != null;
+        
+        // Add marker for original address if coordinates exist
+        if (hasOriginalCoords) {
           const { latitude, longitude } = selectedResult.coordinates;
           
           const iconColor = 
@@ -693,63 +710,65 @@ const MapComponent = ({ selectedResult, confirmedAddress }) => {
                 <span style="color: ${iconColor}; font-weight: bold;">
                   Score: ${Math.round(selectedResult.confidence_score)}%
                 </span><br/>
-                <small>Lat: ${latitude.toFixed(6)}, Lng: ${longitude.toFixed(6)}</small>
+                <small>Lat: ${latitude?.toFixed(6) || 'N/A'}, Lng: ${longitude?.toFixed(6) || 'N/A'}</small>
+              </div>
+            `);
+        }
+        
+        // Add confirmed address marker if available (regardless of original coordinates)
+        if (hasConfirmedCoords) {
+          const confirmedIcon = L.divIcon({
+            html: `
+              <div style="
+                background: #10B981;
+                width: 24px;
+                height: 24px;
+                border-radius: 50%;
+                border: 3px solid white;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+                position: relative;
+              ">
+                <div style="
+                  position: absolute;
+                  top: -26px;
+                  left: 50%;
+                  transform: translateX(-50%);
+                  background: #10B981;
+                  color: white;
+                  padding: 3px 8px;
+                  border-radius: 4px;
+                  font-size: 11px;
+                  font-weight: bold;
+                  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+                  white-space: nowrap;
+                ">Confirmed</div>
+              </div>
+            `,
+            className: 'custom-marker-confirmed',
+            iconSize: [16, 16],
+            iconAnchor: [8, 8],
+          });
+          
+          confirmedMarkerRef.current = L.marker(
+            [confirmedAddress.coordinates.latitude, confirmedAddress.coordinates.longitude], 
+            { icon: confirmedIcon }
+          )
+            .addTo(mapInstanceRef.current)
+            .bindPopup(`
+              <div style="min-width: 200px;">
+                <strong>Confirmed Address</strong><br/>
+                ${confirmedAddress.address}<br/>
+                <span style="color: #10B981; font-weight: bold;">
+                  ✓ Confirmed via ${confirmedAddress.confirmation_method}
+                </span><br/>
+                <small>Lat: ${confirmedAddress.coordinates.latitude?.toFixed(6) || 'N/A'}, Lng: ${confirmedAddress.coordinates.longitude?.toFixed(6) || 'N/A'}</small>
               </div>
             `);
           
-          // Add confirmed address marker if available
-          if (confirmedAddress && confirmedAddress.coordinates) {
-            const confirmedIcon = L.divIcon({
-              html: `
-                <div style="
-                  background: #10B981;
-                  width: 24px;
-                  height: 24px;
-                  border-radius: 50%;
-                  border: 3px solid white;
-                  box-shadow: 0 2px 6px rgba(0,0,0,0.4);
-                  position: relative;
-                ">
-                  <div style="
-                    position: absolute;
-                    top: -26px;
-                    left: 50%;
-                    transform: translateX(-50%);
-                    background: #10B981;
-                    color: white;
-                    padding: 3px 8px;
-                    border-radius: 4px;
-                    font-size: 11px;
-                    font-weight: bold;
-                    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-                    white-space: nowrap;
-                  ">Confirmed</div>
-                </div>
-              `,
-              className: 'custom-marker-confirmed',
-              iconSize: [16, 16],
-              iconAnchor: [8, 8],
-            });
-            
-            confirmedMarkerRef.current = L.marker(
-              [confirmedAddress.coordinates.latitude, confirmedAddress.coordinates.longitude], 
-              { icon: confirmedIcon }
-            )
-              .addTo(mapInstanceRef.current)
-              .bindPopup(`
-                <div style="min-width: 200px;">
-                  <strong>Confirmed Address</strong><br/>
-                  ${confirmedAddress.address}<br/>
-                  <span style="color: #10B981; font-weight: bold;">
-                    ✓ Confirmed via ${confirmedAddress.confirmation_method}
-                  </span><br/>
-                  <small>Lat: ${confirmedAddress.coordinates.latitude.toFixed(6)}, Lng: ${confirmedAddress.coordinates.longitude.toFixed(6)}</small>
-                </div>
-              `);
-            
-            // Draw a line between original and confirmed locations
+          // Draw a line between original and confirmed locations only if both exist
+          if (hasOriginalCoords) {
             const latlngs = [
-              [latitude, longitude],
+              [selectedResult.coordinates.latitude, selectedResult.coordinates.longitude],
               [confirmedAddress.coordinates.latitude, confirmedAddress.coordinates.longitude]
             ];
             
@@ -759,26 +778,40 @@ const MapComponent = ({ selectedResult, confirmedAddress }) => {
               opacity: 0.6,
               dashArray: '5, 10'
             }).addTo(mapInstanceRef.current);
-            
-            // Fit map to show both markers with better visibility
-            const bounds = L.latLngBounds(latlngs);
-            mapInstanceRef.current.fitBounds(bounds, { 
-              padding: [100, 100],  // More padding for better visibility
-              maxZoom: 14  // Don't zoom in too much, keep context visible
-            });
-            
-            // If markers are very close, ensure minimum zoom
-            const currentZoom = mapInstanceRef.current.getZoom();
-            if (currentZoom > 16) {
-              mapInstanceRef.current.setZoom(15);
-            }
-          } else {
-            // Center on original marker only
-            mapInstanceRef.current.setView([latitude, longitude], 13, {
-              animate: true,
-              duration: 0.5
-            });
           }
+        }
+        
+        // Center the map based on what coordinates are available
+        if (hasOriginalCoords && hasConfirmedCoords) {
+          // Both markers exist - fit bounds to show both
+          const latlngs = [
+            [selectedResult.coordinates.latitude, selectedResult.coordinates.longitude],
+            [confirmedAddress.coordinates.latitude, confirmedAddress.coordinates.longitude]
+          ];
+          const bounds = L.latLngBounds(latlngs);
+          mapInstanceRef.current.fitBounds(bounds, { 
+            padding: [100, 100],
+            maxZoom: 14
+          });
+          
+          const currentZoom = mapInstanceRef.current.getZoom();
+          if (currentZoom > 16) {
+            mapInstanceRef.current.setZoom(15);
+          }
+        } else if (hasConfirmedCoords) {
+          // Only confirmed address exists - center on it
+          mapInstanceRef.current.setView(
+            [confirmedAddress.coordinates.latitude, confirmedAddress.coordinates.longitude], 
+            13, 
+            { animate: true, duration: 0.5 }
+          );
+        } else if (hasOriginalCoords) {
+          // Only original address exists - center on it
+          mapInstanceRef.current.setView(
+            [selectedResult.coordinates.latitude, selectedResult.coordinates.longitude], 
+            13, 
+            { animate: true, duration: 0.5 }
+          );
         }
       } catch (error) {
         console.error('Error updating markers:', error);
@@ -880,8 +913,11 @@ function App() {
   const handleSingleValidation = (result) => {
     // Use the ID from backend if available, otherwise generate one
     const newResult = { ...result, id: result.id || `VAL${Date.now()}`, source: 'single' };
-    setAllProcessedResults(prev => [...prev, newResult]);
-    setSelectedResultIndex(allProcessedResults.length);
+    // Add new items to the beginning to maintain newest-first order
+    setAllProcessedResults(prev => [newResult, ...prev]);
+    // Select the newly added item which is now at index 0
+    setSelectedResultIndex(0);
+    setValidateSelectedIndex(0);
     loadStats();
     toast.success('Added to processed results', { duration: 2000 });
   };
@@ -889,7 +925,8 @@ function App() {
   const handleBatchComplete = (results) => {
     // Add source field to bulk results
     const bulkResults = results.map(result => ({ ...result, source: 'bulk' }));
-    setAllProcessedResults(prev => [...prev, ...bulkResults]);
+    // Add new items to the beginning to maintain newest-first order
+    setAllProcessedResults(prev => [...bulkResults, ...prev]);
     loadStats();
     setActiveView('processed');
   };
@@ -997,8 +1034,8 @@ function App() {
                   </div>
                   <div className="p-2 max-h-[calc(100vh-280px)] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
                     <div className="grid grid-cols-1 gap-1.5">
-                      {allProcessedResults.slice().reverse().map((result, idx) => {
-                        const actualIndex = allProcessedResults.length - 1 - idx;
+                      {allProcessedResults.map((result, idx) => {
+                        const actualIndex = idx;
                         return (
                           <CompactResultTile 
                             key={result.id || `validate-${idx}`}  // Use virtual_number as key to prevent cross-contamination
@@ -1096,8 +1133,8 @@ function App() {
                 {/* Results Grid */}
                 <div className="p-2 max-h-[calc(100vh-180px)] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
                   <div className="grid grid-cols-1 gap-1.5">
-                    {allProcessedResults.slice().reverse().map((result, idx) => {
-                      const actualIndex = allProcessedResults.length - 1 - idx;
+                    {allProcessedResults.map((result, idx) => {
+                      const actualIndex = idx;
                       return (
                         <CompactResultTile
                           key={result.id || idx}  // Use virtual_number as key to prevent cross-contamination
