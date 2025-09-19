@@ -824,7 +824,6 @@ def trigger_agent():
                 conn.close()
                 
                 if row:
-                    import json
                     components = json.loads(row['components']) if row['components'] else {}
                     coordinates = json.loads(row['coordinates']) if row['coordinates'] else {}
             except Exception as e:
@@ -850,6 +849,17 @@ def trigger_agent():
         else:  # voice_call
             api_url = "https://agent.shipsy.tech/api/v1/agent/voice_call/address_resolution/aramexapp/create"
         
+        # Build custom_parameters based on action type
+        if action_type == 'whatsapp':
+            custom_params = {
+                "issues": issues,  # Include issues only for WhatsApp
+                "task_id": unique_task_id
+            }
+        else:  # voice_call
+            custom_params = {
+                "task_id": unique_task_id  # Only task_id for voice calls, no issues
+            }
+        
         # Use same payload structure for both endpoints
         agent_payload = {
             "customer_phone_number": contact_number,  # Use the contact number from frontend
@@ -866,10 +876,7 @@ def trigger_agent():
             },
             "preferred_language": "en",
             "status": "",
-            "custom_parameters": {
-                "issues": issues,  # Pass issues as array in custom_parameters
-                "task_id": unique_task_id  # Add unique 7-character task_id for voice_call
-            }
+            "custom_parameters": custom_params
         }
         
         try:
