@@ -994,12 +994,12 @@ def background_polling():
                 
                 pass
                 
-            # Wait 180 seconds before next poll cycle
-            time.sleep(180)
+            # Wait 30 seconds before next poll cycle
+            time.sleep(30)
             
         except Exception as e:
             pass
-            time.sleep(180)
+            time.sleep(30)
 
 def start_background_polling():
     """Start the background polling thread"""

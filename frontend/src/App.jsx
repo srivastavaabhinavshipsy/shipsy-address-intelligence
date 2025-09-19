@@ -250,7 +250,7 @@ const CompactResultTile = ({ result, onClick, isSelected, onAction, onConfirmedA
     if (result.confidence_score < 90 && agentTriggered && !confirmedAddress) {
       const interval = setInterval(() => {
         fetchConfirmedAddress();
-      }, 180000); // Poll every 180 seconds (3 minutes)
+      }, 30000); // Poll every 30 seconds
       
       return () => clearInterval(interval);
     }

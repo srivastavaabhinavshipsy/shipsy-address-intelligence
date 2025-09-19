@@ -109,7 +109,7 @@ const BulkProcessor = ({ onProcessComplete, validationMode = 'rule', llmAvailabl
           );
           onProcessComplete(resultsWithCoords);
         }
-      }, 180000); // Poll every 180 seconds (3 minutes)
+      }, 30000); // Poll every 30 seconds
 
     } catch (error) {
       setIsProcessing(false);

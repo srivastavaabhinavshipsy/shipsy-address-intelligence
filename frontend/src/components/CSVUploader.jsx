@@ -77,7 +77,7 @@ const CSVUploader = ({ onBatchComplete }) => {
           setIsProcessing(false);
           toast.error('Failed to get processing status');
         }
-      }, 180000); // Poll every 180 seconds (3 minutes)
+      }, 30000); // Poll every 30 seconds
 
     } catch (error) {
       setIsProcessing(false);
