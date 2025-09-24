@@ -54,12 +54,10 @@ const BulkProcessor = ({ onProcessComplete, validationMode = 'rule', llmAvailabl
 
     try {
       // Upload and process
-      const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+      const API_URL = 'http://localhost:5000';
       const response = await fetch(`${API_URL}/api/validate-batch`, {
         method: 'POST',
-        headers: {
-          'ngrok-skip-browser-warning': 'true'
-        },
+        headers: {},
         body: formData
       });
 
@@ -69,7 +67,7 @@ const BulkProcessor = ({ onProcessComplete, validationMode = 'rule', llmAvailabl
       // Poll for results
       const pollInterval = setInterval(async () => {
         const statusResponse = await fetch(`${API_URL}/api/batch-status/${jobId}`, {
-          headers: { 'ngrok-skip-browser-warning': 'true' }
+          headers: {}
         });
         const status = await statusResponse.json();
 
@@ -147,12 +145,11 @@ const BulkProcessor = ({ onProcessComplete, validationMode = 'rule', llmAvailabl
     setActionLoading(prev => ({ ...prev, [`${addressId}_${actionType}`]: true }));
     
     try {
-      const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+      const API_URL = 'http://localhost:5000';
       const response = await fetch(`${API_URL}/api/trigger-agent`, {
         method: 'POST',
         headers: { 
-          'Content-Type': 'application/json',
-          'ngrok-skip-browser-warning': 'true'
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({ address, action_type: actionType })
       });

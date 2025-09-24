@@ -17,12 +17,11 @@ const SimpleAddressInput = ({ onValidationComplete }) => {
 
     try {
       // Direct fetch call to avoid any axios issues
-      const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+      const API_URL = 'http://localhost:5000';
       const response = await fetch(`${API_URL}/api/validate-single`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'ngrok-skip-browser-warning': 'true'
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({ address: address.trim() })
       });

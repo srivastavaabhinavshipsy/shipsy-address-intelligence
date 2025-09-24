@@ -1,18 +1,14 @@
 import axios from 'axios';
 
-// Use environment variable for API URL (for ngrok deployment)
-// If REACT_APP_API_URL is set, use it; otherwise default to localhost
-const API_BASE_URL = process.env.REACT_APP_API_URL 
-  ? `${process.env.REACT_APP_API_URL}/api`
-  : 'http://localhost:5000/api';
+// API base URL - using localhost
+const API_BASE_URL = 'http://localhost:5000/api';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
-    'ngrok-skip-browser-warning': 'true',  // Skip ngrok warning page
   },
-  withCredentials: false,  // Important for CORS with ngrok
+  withCredentials: false,
 });
 
 // Request interceptor

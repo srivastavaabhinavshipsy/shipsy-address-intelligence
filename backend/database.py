@@ -87,13 +87,13 @@ class AddressDatabase:
         
         try:
             cursor.execute('''
-                INSERT OR REPLACE INTO validated_addresses 
+                INSERT INTO validated_addresses 
                 (virtual_number, original_address, normalized_address, confidence_score,
                  confidence_level, coordinates, issues, suggestions, components,
-                 contact_number, validation_method, updated_at)
+                 contact_number, validation_method, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ''', (
-                data.get('id'),  # virtual_number
+                data.get('id'),  # virtual_number with timestamp already added
                 data.get('original_address'),
                 data.get('normalized_address'),
                 data.get('confidence_score'),

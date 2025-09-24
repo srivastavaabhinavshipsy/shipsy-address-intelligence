@@ -27,74 +27,71 @@ const INITIAL_DATA = [];
 
 // Compact Address Validator Component
 const AddressValidator = ({ onValidate, validationMode }) => {
-  const [address, setAddress] = useState('');
-  const [contactNumber, setContactNumber] = useState('');
-  const [isValidating, setIsValidating] = useState(false);
+  const [consignmentNumber, setConsignmentNumber] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [actionType, setActionType] = useState(''); // Track which button was clicked
+  const [cnDetails, setCnDetails] = useState(null); // Store fetched CN details
 
-  // Validate South African phone number
-  const validateSouthAfricanNumber = (number) => {
-    // Remove spaces and special characters
-    const cleaned = number.replace(/[\s\-\(\)]/g, '');
-    
-    // COMMENTED OUT SA VALIDATION - Now accepts any phone number
-    // Test numbers that are always accepted
-    const testNumbers = ['+917985645346', '+919807872810'];
-    if (testNumbers.includes(cleaned)) {
-      return true;
-    }
-    
-    // Accept any phone number with basic validation
-    // Must have at least 10 digits (international or local format)
-    // Can start with + for international numbers
-    const basicPhoneRegex = /^(\+)?[0-9]{10,15}$/;
-    return basicPhoneRegex.test(cleaned);
-    
-    // ORIGINAL SA VALIDATION (COMMENTED OUT):
-    // South African phone number patterns:
-    // +27 followed by 9 digits (international format)
-    // 0 followed by 9 digits (local format)
-    // Mobile numbers typically start with 06, 07, 08
-    // const saPhoneRegex = /^(\+27|0)[6-8][0-9]{8}$/;
-    // return saPhoneRegex.test(cleaned);
-  };
-
-  const formatPhoneNumber = (value) => {
-    // Remove all non-digit characters except +
-    const cleaned = value.replace(/[^\d+]/g, '');
-    return cleaned;
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    if (!contactNumber.trim()) {
-      toast.error('Please enter a contact number');
-      return;
-    }
-    
-    if (!validateSouthAfricanNumber(contactNumber)) {
-      toast.error('Please enter a valid phone number (10-15 digits, can start with +)');
-      return;
-    }
-    
-    if (!address.trim()) {
-      toast.error('Please enter an address');
+  const handleFetchDetails = async () => {
+    if (!consignmentNumber.trim()) {
+      toast.error('Please enter a consignment number');
       return;
     }
 
-    setIsValidating(true);
+    setIsProcessing(true);
+    setActionType('fetch');
     try {
-      const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+      const API_URL = 'http://localhost:5000';
+      const response = await fetch(`${API_URL}/api/fetch-cn-details`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ 
+          consignment_number: consignmentNumber.trim()
+        })
+      });
+
+      const result = await response.json();
+      
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to fetch CN details');
+      }
+      
+      setCnDetails(result);
+      toast.success('✅ CN details fetched successfully!');
+      
+    } catch (error) {
+      console.error('Fetch error:', error);
+      toast.error(error.message || 'Failed to fetch CN details');
+      setCnDetails(null);
+    } finally {
+      setIsProcessing(false);
+      setActionType('');
+    }
+  };
+
+  const handleRunIntelligence = async () => {
+    if (!cnDetails) {
+      toast.error('Please fetch CN details first');
+      return;
+    }
+
+    setIsProcessing(true);
+    setActionType('validate');
+    try {
+      const API_URL = 'http://localhost:5000';
       const response = await fetch(`${API_URL}/api/validate-single`, {
         method: 'POST',
         headers: { 
-          'Content-Type': 'application/json',
-          'ngrok-skip-browser-warning': 'true'
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({ 
-          address: address.trim(),
-          contact_number: contactNumber.trim(),
-          validation_mode: validationMode 
+          address: cnDetails.full_address || cnDetails.consignee_address,
+          contact_number: cnDetails.contact_number,
+          validation_mode: validationMode,
+          consignment_number: consignmentNumber.trim(),
+          cn_details: cnDetails // Pass previously fetched details if available
         })
       });
 
@@ -108,8 +105,13 @@ const AddressValidator = ({ onValidate, validationMode }) => {
         throw new Error('Invalid response from server');
       }
       
-      // Include contact number in the result
-      onValidate({ ...result, contact_number: contactNumber.trim() });
+      // Include consignment number and consignee info in the result
+      onValidate({ 
+        ...result, 
+        consignment_number: consignmentNumber.trim(),
+        consignee_name: cnDetails.consignee_name,
+        original_address: cnDetails.full_address || cnDetails.consignee_address
+      });
       
       if (result.confidence_score >= 70) {
         toast.success('✅ Address validated successfully!');
@@ -121,64 +123,96 @@ const AddressValidator = ({ onValidate, validationMode }) => {
         toast.error('❌ Address validation failed');
       }
       
-      setAddress('');
-      setContactNumber('');
+      setConsignmentNumber('');
+      setCnDetails(null);
     } catch (error) {
       console.error('Validation error:', error);
       toast.error(error.message || 'Failed to validate address');
     } finally {
-      setIsValidating(false);
+      setIsProcessing(false);
+      setActionType('');
     }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-2">
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">
-            Customer's Contact Number *
-          </label>
-          <div className="relative">
-            <PhoneIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <input
-              value={contactNumber}
-              onChange={(e) => setContactNumber(formatPhoneNumber(e.target.value))}
-              placeholder="+27812345678 or 0812345678"
-              className="w-full pl-10 pr-3 py-2 text-sm border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-              disabled={isValidating}
-              required
-            />
-          </div>
-        </div>
-        
-        <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">
-            Customer's Address *
-          </label>
-          <div className="relative">
-            <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <input
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              placeholder="123 Main Street, Cape Town"
-              className="w-full pl-10 pr-3 py-2 text-sm border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-              disabled={isValidating}
-              required
-            />
-          </div>
+    <div className="space-y-3">
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1">
+          Consignment Number *
+        </label>
+        <div className="relative">
+          <DocumentTextIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <input
+            value={consignmentNumber}
+            onChange={(e) => setConsignmentNumber(e.target.value)}
+            placeholder="Enter consignment number (e.g., CN123456789)"
+            className="w-full pl-10 pr-3 py-2 text-sm border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+            disabled={isProcessing}
+          />
         </div>
       </div>
       
-      <div className="flex justify-end">
-        <button
-          type="submit"
-          disabled={isValidating || !address.trim() || !contactNumber.trim()}
-          className="px-6 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+      {/* Display fetched CN details */}
+      {cnDetails && cnDetails.success && (
+        <motion.div 
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-green-50 border border-green-200 rounded-md p-3"
         >
-          {isValidating ? 'Validating...' : 'Validate'}
+          <div className="flex items-start justify-between mb-2">
+            <h4 className="text-xs font-semibold text-green-800">CN Details Fetched Successfully</h4>
+            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+              cnDetails.status === 'DELIVERED' ? 'bg-green-100 text-green-700' :
+              cnDetails.status === 'IN_TRANSIT' ? 'bg-blue-100 text-blue-700' :
+              'bg-gray-100 text-gray-700'
+            }`}>
+              {cnDetails.status}
+            </span>
+          </div>
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-gray-600">Consignee:</span>
+              <span className="text-xs text-gray-800">{cnDetails.consignee_name}</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <span className="text-xs font-medium text-gray-600">Address:</span>
+              <span className="text-xs text-gray-800 flex-1">{cnDetails.full_address || cnDetails.consignee_address}</span>
+            </div>
+            {cnDetails.contact_number && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-gray-600">Contact:</span>
+                <span className="text-xs text-gray-800">{cnDetails.contact_number}</span>
+              </div>
+            )}
+          </div>
+          <div className="mt-2 pt-2 border-t border-green-200">
+            <p className="text-xs text-green-700 font-medium flex items-center gap-1">
+              <CheckCircleIcon className="h-3 w-3" />
+              Ready for Address Intelligence Analysis
+            </p>
+          </div>
+        </motion.div>
+      )}
+      
+      <div className="flex justify-end gap-2">
+        <button
+          onClick={handleFetchDetails}
+          disabled={isProcessing || !consignmentNumber.trim()}
+          className="px-4 py-2 bg-gray-600 text-white text-sm rounded-md hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1"
+        >
+          <MagnifyingGlassIcon className="h-4 w-4" />
+          {isProcessing && actionType === 'fetch' ? 'Fetching...' : 'Fetch CN Details'}
+        </button>
+        <button
+          onClick={handleRunIntelligence}
+          disabled={isProcessing || !cnDetails}
+          className="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1"
+        >
+          <BeakerIcon className="h-4 w-4" />
+          {isProcessing && actionType === 'validate' ? 'Analyzing...' : 'Run Address Intelligence'}
         </button>
       </div>
-    </form>
+    </div>
   );
 };
 
@@ -207,13 +241,12 @@ const CompactResultTile = ({ result, onClick, isSelected, onAction, onConfirmedA
   const fetchConfirmedAddress = async () => {
     setLoadingConfirmed(true);
     try {
-      const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+      const API_URL = 'http://localhost:5000';
       
-      // Call real API endpoint with virtual number
-      const response = await fetch(`${API_URL}/api/confirmed-address/${result.id}`, {
-        headers: { 
-          'ngrok-skip-browser-warning': 'true'
-        }
+      // Use consignment number (without timestamp) to match what we send to trigger-agent
+      const virtualNumber = result.consignment_number || result.id;
+      const response = await fetch(`${API_URL}/api/confirmed-address/${virtualNumber}`, {
+        headers: {}
       });
       
       if (response.ok) {
@@ -271,14 +304,13 @@ const CompactResultTile = ({ result, onClick, isSelected, onAction, onConfirmedA
     toast.loading(`Initiating ${actionType}...`, { id: actionType });
     
     try {
-      const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+      const API_URL = 'http://localhost:5000';
       const contactNum = result.contact_number || '+27812345678';
       
       const response = await fetch(`${API_URL}/api/trigger-agent`, {
         method: 'POST',
         headers: { 
-          'Content-Type': 'application/json',
-          'ngrok-skip-browser-warning': 'true'
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({ 
           address: result.original_address, 
@@ -286,7 +318,7 @@ const CompactResultTile = ({ result, onClick, isSelected, onAction, onConfirmedA
           issues: result.issues || [],
           confidence_score: result.confidence_score,
           contact_number: contactNum,
-          virtual_number: result.id,  // Pass the virtual number as reference
+          virtual_number: result.consignment_number || result.id,  // Pass CN number or fallback to id
           components: result.components || {},  // Pass already validated components
           coordinates: result.coordinates || {}  // Pass already validated coordinates
         })
@@ -382,7 +414,7 @@ const CompactResultTile = ({ result, onClick, isSelected, onAction, onConfirmedA
       <div className="flex items-center justify-between mb-1.5">
         <div className="flex items-center gap-1.5">
           <span className="text-xs text-gray-400 font-mono">
-            #{result.id || Math.random().toString(36).substr(2, 6).toUpperCase()}
+            {result.consignment_number ? `CN: ${result.consignment_number}` : `#${result.id?.split('_')[0] || result.id || Math.random().toString(36).substr(2, 6).toUpperCase()}`}
           </span>
           {/* Confirmation Status Indicator */}
           {result.confidence_score < 90 && confirmedAddress && (
@@ -847,7 +879,7 @@ function App() {
   
   const checkLLMAvailability = async () => {
     try {
-      const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+      const API_URL = 'http://localhost:5000';
       const response = await fetch(`${API_URL}/health`, {
         headers: { 'ngrok-skip-browser-warning': 'true' }
       });
@@ -869,7 +901,7 @@ function App() {
 
   const loadSavedAddresses = async () => {
     try {
-      const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+      const API_URL = 'http://localhost:5000';
       const response = await fetch(`${API_URL}/api/addresses/all`, {
         headers: { 'ngrok-skip-browser-warning': 'true' }
       });

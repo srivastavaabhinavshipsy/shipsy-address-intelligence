@@ -2,6 +2,17 @@
 AI Address Intelligence Flask Backend API with LLM Support
 """
 
+# Suppress gRPC warnings BEFORE any imports
+import os
+
+# Suppress gRPC and Google API warnings
+os.environ['GRPC_VERBOSITY'] = 'ERROR'
+os.environ['GLOG_minloglevel'] = '2'
+
+import sys
+import warnings
+import logging
+
 from flask import Flask, request, jsonify, send_file, make_response
 from flask_cors import CORS, cross_origin
 import csv
@@ -17,7 +28,6 @@ import os
 import requests
 from validator import SAAddressValidator
 from dotenv import load_dotenv
-import threading
 from database import AddressDatabase
 
 # Load environment variables
@@ -39,13 +49,8 @@ validator = SAAddressValidator()  # Rule-based validator
 llm_validator = None
 
 # Virtual number management
-virtual_numbers_lock = threading.Lock()
 available_virtual_numbers = []
 used_virtual_numbers = []
-
-# Background polling
-polling_thread = None
-polling_active = False
 
 def load_virtual_numbers():
     """Load virtual numbers from JSON file"""
@@ -61,20 +66,19 @@ def load_virtual_numbers():
 def get_next_virtual_number():
     """Get the next available virtual number"""
     global available_virtual_numbers, used_virtual_numbers
-    with virtual_numbers_lock:
-        if available_virtual_numbers:
-            number = available_virtual_numbers.pop(0)
-            used_virtual_numbers.append(number)
-            # Save the updated list back to file
-            try:
-                with open('virtual_numbers.json', 'w') as f:
-                    json.dump(available_virtual_numbers, f, indent=2)
-            except Exception as e:
-                print(f"Failed to save virtual numbers: {e}")
-            return number
-        else:
-            # Fallback to generated ID if no virtual numbers available
-            return f"VAL{int(time.time()*1000)}"
+    if available_virtual_numbers:
+        number = available_virtual_numbers.pop(0)
+        used_virtual_numbers.append(number)
+        # Save the updated list back to file
+        try:
+            with open('virtual_numbers.json', 'w') as f:
+                json.dump(available_virtual_numbers, f, indent=2)
+        except Exception as e:
+            print(f"Failed to save virtual numbers: {e}")
+        return number
+    else:
+        # Fallback to generated ID if no virtual numbers available
+        return f"VAL{int(time.time()*1000)}"
 
 # Load virtual numbers on startup
 load_virtual_numbers()
@@ -96,19 +100,28 @@ def get_llm_validator():
 # In-memory storage for batch jobs
 batch_jobs = {}
 
-@app.route('/api/fetch-cn-details', methods=['POST'])
+@app.route('/api/fetch-consignment', methods=['POST'])
 @cross_origin()
-def fetch_cn_details():
+def fetch_consignment():
     """Fetch consignment details from Shipsy API"""
     try:
-        data = request.json
-        consignment_number = data.get('consignment_number', '').strip()
+        data = request.get_json()
+        print(f"Received consignment fetch request: {data}")
+        
+        if not data or 'consignment_number' not in data:
+            return jsonify({
+                "error": "Missing 'consignment_number' field in request"
+            }), 400
+        
+        consignment_number = data['consignment_number'].strip()
         
         if not consignment_number:
-            return jsonify({"error": "Consignment number is required"}), 400
+            return jsonify({
+                "error": "Consignment number cannot be empty"
+            }), 400
         
         # Call Shipsy API to fetch consignment details
-        shipsy_api_url = "https://demodashboardapi.shipsy.in/api/client/integration/fetchConsignments"
+        shipsy_url = "https://demodashboardapi.shipsy.in/api/client/integration/fetchConsignments"
         headers = {
             'Content-Type': 'application/json',
             'Authorization': 'Basic YmNmZDdlZWJmNzdiMmQ4NDJlNzVjMDA1NzI3OGY4Og=='
@@ -118,174 +131,281 @@ def fetch_cn_details():
         }
         
         try:
-            response = requests.post(shipsy_api_url, headers=headers, json=payload, timeout=10)
-            response.raise_for_status()
+            response = requests.post(shipsy_url, json=payload, headers=headers, timeout=10)
             
-            shipsy_data = response.json()
-            
-            # Extract consignment details from response
-            if (shipsy_data and 'data' in shipsy_data and 
-                'page_data' in shipsy_data['data'] and 
-                len(shipsy_data['data']['page_data']) > 0):
-                consignment = shipsy_data['data']['page_data'][0]
+            if response.status_code == 200:
+                consignment_data = response.json()
                 
-                # Extract required fields - using correct field names
-                consignee_name = consignment.get('destination_name', 'N/A')
-                consignee_address = consignment.get('destination_address_line_1', 'N/A')
-                status = consignment.get('status', 'N/A')
-                
-                # Also extract additional useful fields
-                contact_number = consignment.get('consignment_destination_phone', '')
-                email = consignment.get('destination_email', '')
-                destination_city = consignment.get('destination_city', '')
-                destination_state = consignment.get('destination_state', '')
-                destination_pincode = consignment.get('destination_pincode', '')
-                
-                # Construct full address
-                full_address = consignee_address
-                if destination_city:
-                    full_address += f", {destination_city}"
-                if destination_state:
-                    full_address += f", {destination_state}"
-                if destination_pincode:
-                    full_address += f", {destination_pincode}"
-                
-                return jsonify({
-                    "success": True,
-                    "consignment_number": consignment_number,
-                    "consignee_name": consignee_name,
-                    "consignee_address": consignee_address,
-                    "full_address": full_address,
-                    "status": status,
-                    "contact_number": contact_number,
-                    "email": email,
-                    "destination_city": destination_city,
-                    "destination_state": destination_state,
-                    "destination_pincode": destination_pincode,
-                    "ready_for_intelligence": True,
-                    "raw_data": consignment  # Include full data for debugging
-                }), 200
+                if (consignment_data.get('status') == 'OK' and 
+                    consignment_data.get('data', {}).get('page_data') and 
+                    len(consignment_data['data']['page_data']) > 0):
+                    
+                    consignment_info = consignment_data['data']['page_data'][0]
+                    
+                    # Extract consignee information
+                    consignee_data = {
+                        'consignment_number': consignment_number,
+                        'consignee_name': consignment_info.get('destination_name', ''),
+                        'consignee_phone': consignment_info.get('consignment_destination_phone', ''),
+                        'address': consignment_info.get('destination_address_line_1', ''),
+                        'city': consignment_info.get('destination_city', ''),
+                        'state': consignment_info.get('destination_state', ''),
+                        'country': consignment_info.get('destination_country', ''),
+                        'pincode': consignment_info.get('destination_pincode', ''),
+                        'status': consignment_info.get('status', ''),
+                        'reference_number': consignment_info.get('reference_number', '')
+                    }
+                    
+                    return jsonify({
+                        'success': True,
+                        'consignee': consignee_data,
+                        'raw_data': consignment_info
+                    }), 200
+                else:
+                    return jsonify({
+                        "error": f"Consignment {consignment_number} not found or no data available"
+                    }), 404
             else:
                 return jsonify({
-                    "success": False,
-                    "error": "No consignment found with this number",
-                    "consignment_number": consignment_number
-                }), 404
+                    "error": f"Failed to fetch consignment details. Status: {response.status_code}"
+                }), response.status_code
                 
-        except requests.exceptions.RequestException as e:
-            print(f"Error calling Shipsy API: {e}")
+        except requests.exceptions.Timeout:
             return jsonify({
-                "success": False,
-                "error": f"Failed to fetch from Shipsy API: {str(e)}",
-                "consignment_number": consignment_number
-            }), 500
+                "error": "Request timeout while fetching consignment details"
+            }), 504
+        except requests.exceptions.RequestException as e:
+            return jsonify({
+                "error": f"Failed to connect to consignment API: {str(e)}"
+            }), 503
             
     except Exception as e:
-        print(f"Error in fetch_cn_details: {e}")
-        return jsonify({"error": str(e)}), 500
+        print(f"Error in fetch_consignment: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            "error": "Internal server error",
+            "message": str(e)
+        }), 500
+
+@app.route('/api/test-llm', methods=['POST'])
+@cross_origin()
+def test_llm():
+    """Simple LLM test without consignment fetching"""
+    print("🧪 TEST ENDPOINT HIT: /api/test-llm")
+    try:
+        print("🤖 Getting LLM validator...")
+        llm = get_llm_validator()
+        
+        if llm:
+            print("📤 Testing LLM with simple address...")
+            test_address = "123 Main Street, Cape Town, Western Cape"
+            result = llm.validate_address(test_address)
+            print(f"✅ LLM test successful!")
+            return jsonify({
+                "success": True,
+                "test_address": test_address,
+                "result": result
+            }), 200
+        else:
+            return jsonify({
+                "error": "LLM validator not available"
+            }), 400
+            
+    except Exception as e:
+        print(f"❌ LLM test error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            "error": "LLM test failed",
+            "message": str(e)
+        }), 500
+
+@app.route('/api/validate-consignment', methods=['POST'])
+@cross_origin()
+def validate_consignment():
+    """Fetch consignment and validate address in one step"""
+    print("🚀 ENDPOINT HIT: /api/validate-consignment")
+    try:
+        print("📥 Getting JSON data...")
+        data = request.get_json()
+        print(f"✅ Received data: {data}")
+        
+        if not data or 'consignment_number' not in data:
+            return jsonify({
+                "error": "Missing 'consignment_number' field in request"
+            }), 400
+        
+        consignment_number = data['consignment_number'].strip()
+        validation_mode = 'llm'  # FORCE LLM MODE ONLY
+        
+        if not consignment_number:
+            return jsonify({
+                "error": "Consignment number cannot be empty"
+            }), 400
+        
+        # Step 1: Fetch consignment details
+        print("📡 Step 1: Fetching consignment details...")
+        shipsy_url = "https://demodashboardapi.shipsy.in/api/client/integration/fetchConsignments"
+        headers = {
+            'Content-Type': 'application/json',
+            'Authorization': 'Basic YmNmZDdlZWJmNzdiMmQ4NDJlNzVjMDA1NzI3OGY4Og=='
+        }
+        payload = {
+            "referenceNumberList": [consignment_number]
+        }
+        
+        try:
+            print(f"🌐 Making request to Shipsy API...")
+            response = requests.post(shipsy_url, json=payload, headers=headers, timeout=10)
+            print(f"📡 Got response with status: {response.status_code}")
+            
+            if response.status_code == 200:
+                consignment_data = response.json()
+                
+                if (consignment_data.get('status') == 'OK' and 
+                    consignment_data.get('data', {}).get('page_data') and 
+                    len(consignment_data['data']['page_data']) > 0):
+                    
+                    consignment_info = consignment_data['data']['page_data'][0]
+                    
+                    # Extract address from consignment
+                    address = consignment_info.get('destination_address_line_1', '')
+                    consignee_phone = consignment_info.get('consignment_destination_phone', '')
+                    
+                    print(f"Extracted address: '{address}' and phone: '{consignee_phone}'")
+                    
+                    if not address or address.strip() == '':
+                        return jsonify({
+                            "error": "No address found in consignment details",
+                            "consignment_data": {
+                                "consignee_name": consignment_info.get('destination_name', ''),
+                                "status": consignment_info.get('status', ''),
+                                "all_address_fields": {
+                                    "line1": consignment_info.get('destination_address_line_1', ''),
+                                    "line2": consignment_info.get('destination_address_line_2', ''),
+                                    "city": consignment_info.get('destination_city', ''),
+                                    "state": consignment_info.get('destination_state', ''),
+                                    "country": consignment_info.get('destination_country', ''),
+                                }
+                            }
+                        }), 400
+                    
+                    # Step 2: Validate the address using existing logic
+                    start_time = time.time()
+                    print(f"🔍 Starting validation for address: '{address}' using mode: '{validation_mode}'")
+                    
+                    # Simple LLM validation
+                    print(f"Getting LLM validator...")
+                    llm = get_llm_validator()
+                    
+                    if not llm:
+                        return jsonify({"error": "GEMINI_API_KEY not configured"}), 400
+                    
+                    print(f"Validating address with LLM: {address}")
+                    result = llm.validate_address(address)
+                    
+                    # Add metadata to result
+                    result['processing_time_ms'] = round((time.time() - start_time) * 1000, 2)
+                    result['timestamp'] = datetime.now().isoformat()
+                    result['id'] = get_next_virtual_number()
+                    result['original_address'] = address
+                    result['contact_number'] = consignee_phone
+                    result['consignment_number'] = consignment_number
+                    result['consignee_name'] = consignment_info.get('destination_name', '')
+                    result['validation_method'] = 'llm'
+                    
+                    db.save_validated_address(result)
+                    print(f"✅ Validation complete: {result.get('confidence_score')}%")
+                    return jsonify(result), 200
+                    
+                    # NO RULE-BASED VALIDATION - LLM ONLY
+                    print("❌ No rule-based validation allowed - LLM is required")
+                    return jsonify({
+                        "error": "Validation mode must be 'llm' - no rule-based validation available",
+                        "message": "This system only supports LLM-based validation"
+                    }), 400
+                    
+                else:
+                    return jsonify({
+                        "error": f"Consignment {consignment_number} not found"
+                    }), 404
+            else:
+                return jsonify({
+                    "error": f"Failed to fetch consignment details. Status: {response.status_code}"
+                }), response.status_code
+                
+        except requests.exceptions.Timeout:
+            return jsonify({
+                "error": "Request timeout while fetching consignment details"
+            }), 504
+        except requests.exceptions.RequestException as e:
+            return jsonify({
+                "error": f"Failed to connect to consignment API: {str(e)}"
+            }), 503
+            
+    except Exception as e:
+        print(f"Error in validate_consignment: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            "error": "Internal server error",
+            "message": str(e)
+        }), 500
 
 @app.route('/api/validate-single', methods=['POST'])
 @cross_origin()
 def validate_single():
-    """Validate a single address with LLM for intelligence analysis"""
+    """Validate a single address with option for LLM or rule-based"""
         
     try:
         data = request.get_json()
         print(f"Received validation request: {data}")
         
-        # Handle both direct address and CN-based requests
-        if not data or ('address' not in data and 'consignment_number' not in data):
+        if not data or 'address' not in data:
             return jsonify({
-                "error": "Missing 'address' or 'consignment_number' field in request"
+                "error": "Missing 'address' field in request"
             }), 400
         
-        address = data.get('address', '').strip()
-        consignment_number = data.get('consignment_number', '').strip()
-        cn_details = data.get('cn_details', {})
-        
-        # If we have CN details, use them
-        if cn_details and not address:
-            address = cn_details.get('full_address') or cn_details.get('consignee_address', '')
+        address = data['address'].strip()
+        validation_mode = 'llm'  # FORCE LLM MODE ONLY  # Always use AI mode (llm)
         
         if not address:
             return jsonify({
                 "error": "Address cannot be empty"
             }), 400
         
-        # Always use LLM for CN-based addresses for intelligence analysis
-        validation_mode = 'llm' if consignment_number else data.get('validation_mode', 'llm')
-        
         # Choose validator based on mode
         start_time = time.time()
         
-        if validation_mode == 'llm':
-            llm = get_llm_validator()
-            if llm:
-                try:
-                    print(f"Using LLM intelligence analysis for CN {consignment_number}: {address}")
-                    result = llm.validate_address(address)
-                    processing_time = round((time.time() - start_time) * 1000, 2)
-                    result['processing_time_ms'] = processing_time
-                    result['timestamp'] = datetime.now().isoformat()
-                    # Use consignment number with timestamp for uniqueness
-                    result['id'] = f"{consignment_number}_{int(time.time()*1000)}" if consignment_number else get_next_virtual_number()
-                    result['original_address'] = address
-                    result['contact_number'] = data.get('contact_number') or cn_details.get('contact_number')
-                    result['consignment_number'] = consignment_number
-                    result['consignee_name'] = cn_details.get('consignee_name')
-                    
-                    # Save to database
-                    db.save_validated_address(result)
-                    
-                    print(f"LLM validation successful: {result.get('confidence_score')}%")
-                    return jsonify(result), 200
-                except Exception as e:
-                    print(f"LLM validation error: {e}")
-                    # Fallback to rule-based
-                    result = validator.validate_address(address)
-                    processing_time = round((time.time() - start_time) * 1000, 2)
-                    response = result.to_dict()
-                    response['processing_time_ms'] = processing_time
-                    response['timestamp'] = datetime.now().isoformat()
-                    response['validation_method'] = 'rule (fallback)'
-                    response['llm_error'] = str(e)
-                    # Use consignment number with timestamp for uniqueness
-                    response['id'] = f"{consignment_number}_{int(time.time()*1000)}" if consignment_number else get_next_virtual_number()
-                    response['original_address'] = address
-                    response['contact_number'] = data.get('contact_number') or cn_details.get('contact_number')
-                    response['consignment_number'] = consignment_number
-                    response['consignee_name'] = cn_details.get('consignee_name')
-                    
-                    # Save to database
-                    db.save_validated_address(response)
-                    
-                    return jsonify(response), 200
-            else:
-                return jsonify({
-                    "error": "LLM validation requested but GEMINI_API_KEY not configured. Please set GEMINI_API_KEY in .env file."
-                }), 400
+        # Simple LLM validation
+        llm = get_llm_validator()
+        if llm:
+            print(f"📤 Validating address with LLM: {address}")
+            result = llm.validate_address(address)
+            
+            processing_time = round((time.time() - start_time) * 1000, 2)
+            result['processing_time_ms'] = processing_time
+            result['timestamp'] = datetime.now().isoformat()
+            result['id'] = get_next_virtual_number()
+            result['original_address'] = address
+            result['contact_number'] = data.get('contact_number')
+            result['validation_method'] = 'llm'
+            
+            db.save_validated_address(result)
+            print(f"✅ Validation complete: {result.get('confidence_score')}%")
+            return jsonify(result), 200
+        else:
+            return jsonify({
+                "error": "GEMINI_API_KEY not configured"
+            }), 400
         
-        # Default to rule-based validation
-        print(f"Using rule-based validation for: {address}")
-        result = validator.validate_address(address)
-        processing_time = round((time.time() - start_time) * 1000, 2)
-        
-        response = result.to_dict()
-        response['processing_time_ms'] = processing_time
-        response['timestamp'] = datetime.now().isoformat()
-        response['validation_method'] = 'rule'
-        # Use consignment number with timestamp for uniqueness
-        response['id'] = f"{consignment_number}_{int(time.time()*1000)}" if consignment_number else get_next_virtual_number()
-        response['original_address'] = address
-        response['contact_number'] = data.get('contact_number') or cn_details.get('contact_number')
-        response['consignment_number'] = consignment_number
-        response['consignee_name'] = cn_details.get('consignee_name')
-        
-        # Save to database
-        db.save_validated_address(response)
-        
-        print(f"Validation complete: {response['confidence_score']}% confidence")
-        return jsonify(response), 200
+        # NO RULE-BASED VALIDATION - LLM ONLY
+        print("❌ No rule-based validation allowed - LLM is required")
+        return jsonify({
+            "error": "Validation mode must be 'llm' - no rule-based validation available",
+            "message": "This system only supports LLM-based validation. Please ensure GEMINI_API_KEY is configured."
+        }), 400
         
     except Exception as e:
         print(f"Error in validate_single: {str(e)}")
@@ -311,7 +431,7 @@ def validate_batch():
             
         csv_content = data['csv_content']
         csv_file = io.StringIO(csv_content)
-        validation_mode = data.get('validation_mode', 'llm')  # Always use AI mode (llm)
+        validation_mode = 'llm'  # FORCE LLM MODE ONLY  # Always use AI mode (llm)
     else:
         file = request.files['file']
         if file.filename == '':
@@ -588,19 +708,12 @@ def get_stats():
 def get_confirmed_address(virtual_number):
     """Get confirmed address for a validation from database"""
     
-    # Extract consignment number from virtual_number (remove timestamp if present)
-    if virtual_number and '_' in virtual_number:
-        # If it has timestamp (e.g., "EQ5498765610_1758724415625"), take only the CN part
-        reference_number = virtual_number.split('_')[0]
-    else:
-        reference_number = virtual_number
-    
-    # Try to get from database first using the clean reference number
-    confirmed = db.get_confirmed_address(reference_number)
+    # Try to get from database first
+    confirmed = db.get_confirmed_address(virtual_number)
     
     if confirmed:
         return jsonify({
-            "virtual_number": reference_number,
+            "virtual_number": virtual_number,
             "confirmed_address": {
                 "address": confirmed['confirmed_address'],
                 "coordinates": confirmed['confirmed_coordinates'],
@@ -614,14 +727,14 @@ def get_confirmed_address(virtual_number):
     else:
         # Check if still pending
         pending = db.get_pending_confirmations()
-        if reference_number in pending:
-            # Trigger a poll for this specific address using clean reference number
-            if poll_single_address(reference_number):
+        if virtual_number in pending:
+            # Trigger a poll for this specific address
+            if poll_single_address(virtual_number):
                 # If polling succeeded, try to get the confirmed address again
-                confirmed = db.get_confirmed_address(reference_number)
+                confirmed = db.get_confirmed_address(virtual_number)
                 if confirmed:
                     return jsonify({
-                        "virtual_number": reference_number,
+                        "virtual_number": virtual_number,
                         "confirmed_address": {
                             "address": confirmed['confirmed_address'],
                             "coordinates": confirmed['confirmed_coordinates'],
@@ -636,7 +749,7 @@ def get_confirmed_address(virtual_number):
             pass
             
         return jsonify({
-            "virtual_number": reference_number,
+            "virtual_number": virtual_number,
             "status": "pending"
         })
 
@@ -945,13 +1058,8 @@ def trigger_agent():
                 components = {}
                 coordinates = {}
         
-        # Extract consignment number from virtual_number (remove timestamp if present)
-        if virtual_number and '_' in virtual_number:
-            # If it has timestamp (e.g., "EQ5498765610_1758724415625"), take only the CN part
-            reference_number = virtual_number.split('_')[0]
-        else:
-            # Use as is if no timestamp, or generate if not provided
-            reference_number = virtual_number if virtual_number else str(uuid.uuid4())
+        # Use virtual number as reference_number (or generate if not provided)
+        reference_number = virtual_number if virtual_number else str(uuid.uuid4())
         
         # Generate unique 7-character alphanumeric task_id
         def generate_task_id():
@@ -997,20 +1105,6 @@ def trigger_agent():
             "custom_parameters": custom_params
         }
         
-        # Print the complete request being sent
-        print("\n" + "="*80)
-        print(f"SHIPSY API REQUEST - {action_type.upper()}")
-        print("="*80)
-        print(f"URL: {api_url}")
-        print(f"\nHEADERS:")
-        print(json.dumps({
-            'api-key': 'jsdbfjhsbdfjhsdbfuguwer9238749832kdssi89',
-            'Content-Type': 'application/json'
-        }, indent=2))
-        print(f"\nREQUEST BODY:")
-        print(json.dumps(agent_payload, indent=2))
-        print("="*80 + "\n")
-        
         try:
             # Use API key for both endpoints
             headers = {
@@ -1027,10 +1121,6 @@ def trigger_agent():
             
             if response.status_code == 200 or response.status_code == 201:
                 api_response = response.json()
-                
-                print("\nSHIPSY API RESPONSE:")
-                print(json.dumps(api_response, indent=2))
-                print("="*80 + "\n")
                 
                 # Save agent call to database
                 db.save_agent_call({
@@ -1183,4 +1273,4 @@ if __name__ == '__main__':
     # Start background polling for pending confirmations
     start_background_polling()
     
-    app.run(debug=True, host='0.0.0.0', port=port)
+    app.run(debug=False, host='0.0.0.0', port=port, use_reloader=False)
