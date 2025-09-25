@@ -242,7 +242,8 @@ const CompactResultTile = ({ result, onClick, isSelected, onAction, onConfirmedA
     try {
       
       // Use consignment number (without timestamp) to match what we send to trigger-agent
-      const virtualNumber = result.consignment_number || result.id;
+      const virtualNumber = result.consignment_number || result.id?.split('_')[0] || result.id;
+      console.log('Fetching confirmed address for:', virtualNumber, 'from result:', result);
       const response = await fetch(`${API_URL}/api/confirmed-address/${virtualNumber}`, {
         headers: getHeaders()
       });
@@ -446,6 +447,7 @@ const CompactResultTile = ({ result, onClick, isSelected, onAction, onConfirmedA
         
         {result.confidence_score < 90 && (
           <div className="flex gap-1">
+            {/* Call button commented out - keeping only WhatsApp
             <button
               onClick={(e) => handleAction('call', e)}
               disabled={actionLoading.call}
@@ -454,6 +456,7 @@ const CompactResultTile = ({ result, onClick, isSelected, onAction, onConfirmedA
             >
               <PhoneIcon className="h-3 w-3" />
             </button>
+            */}
             <button
               onClick={(e) => handleAction('whatsapp', e)}
               disabled={actionLoading.whatsapp}
