@@ -19,6 +19,7 @@ import {
   XMarkIcon
 } from '@heroicons/react/24/outline';
 import { addressAPI } from './services/api';
+import { API_URL, getHeaders } from './config';
 // import BulkProcessor from './components/BulkProcessor'; // Hidden for demo
 import toast from 'react-hot-toast';
 
@@ -41,7 +42,6 @@ const AddressValidator = ({ onValidate, validationMode }) => {
     setIsProcessing(true);
     setActionType('fetch');
     try {
-      const API_URL = 'http://localhost:5000';
       const response = await fetch(`${API_URL}/api/fetch-cn-details`, {
         method: 'POST',
         headers: { 
@@ -80,7 +80,6 @@ const AddressValidator = ({ onValidate, validationMode }) => {
     setIsProcessing(true);
     setActionType('validate');
     try {
-      const API_URL = 'http://localhost:5000';
       const response = await fetch(`${API_URL}/api/validate-single`, {
         method: 'POST',
         headers: { 
@@ -241,12 +240,11 @@ const CompactResultTile = ({ result, onClick, isSelected, onAction, onConfirmedA
   const fetchConfirmedAddress = async () => {
     setLoadingConfirmed(true);
     try {
-      const API_URL = 'http://localhost:5000';
       
       // Use consignment number (without timestamp) to match what we send to trigger-agent
       const virtualNumber = result.consignment_number || result.id;
       const response = await fetch(`${API_URL}/api/confirmed-address/${virtualNumber}`, {
-        headers: {}
+        headers: getHeaders()
       });
       
       if (response.ok) {
@@ -304,7 +302,6 @@ const CompactResultTile = ({ result, onClick, isSelected, onAction, onConfirmedA
     toast.loading(`Initiating ${actionType}...`, { id: actionType });
     
     try {
-      const API_URL = 'http://localhost:5000';
       const contactNum = result.contact_number || '+27812345678';
       
       const response = await fetch(`${API_URL}/api/trigger-agent`, {
@@ -879,9 +876,8 @@ function App() {
   
   const checkLLMAvailability = async () => {
     try {
-      const API_URL = 'http://localhost:5000';
       const response = await fetch(`${API_URL}/health`, {
-        headers: { 'ngrok-skip-browser-warning': 'true' }
+        headers: getHeaders()
       });
       const data = await response.json();
       setLlmAvailable(data.llm_validator === 'available');
@@ -901,9 +897,8 @@ function App() {
 
   const loadSavedAddresses = async () => {
     try {
-      const API_URL = 'http://localhost:5000';
       const response = await fetch(`${API_URL}/api/addresses/all`, {
-        headers: { 'ngrok-skip-browser-warning': 'true' }
+        headers: getHeaders()
       });
       
       if (response.ok) {

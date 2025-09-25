@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
+import { API_URL } from '../config';
 
 const SimpleAddressInput = ({ onValidationComplete }) => {
   const [address, setAddress] = useState('');
@@ -17,7 +18,6 @@ const SimpleAddressInput = ({ onValidationComplete }) => {
 
     try {
       // Direct fetch call to avoid any axios issues
-      const API_URL = 'http://localhost:5000';
       const response = await fetch(`${API_URL}/api/validate-single`, {
         method: 'POST',
         headers: {

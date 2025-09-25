@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { API_URL } from '../config';
 
 const ConnectionTest = () => {
   const [backendStatus, setBackendStatus] = useState('checking');
@@ -9,7 +10,6 @@ const ConnectionTest = () => {
     const testConnection = async () => {
       try {
         console.log('Testing connection to backend...');
-        const API_URL = 'http://localhost:5000';
         const response = await fetch(`${API_URL}/api/health`, {
           method: 'GET',
           headers: {
