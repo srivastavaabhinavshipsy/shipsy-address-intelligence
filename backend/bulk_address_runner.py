@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 Bulk address workflow script.
 
@@ -20,7 +21,25 @@ from typing import Any, Dict, Iterator, Optional
 
 import pandas as pd
 import requests
+from dotenv import load_dotenv
 
+# Load environment variables - STRICTLY from backend directory only
+backend_dir = os.path.dirname(os.path.abspath(__file__))
+env_path = os.path.join(backend_dir, '.env')
+if os.path.exists(env_path):
+    # Use override=True to force .env file values to take precedence over system env vars
+    load_dotenv(dotenv_path=env_path, override=True)
+    print(f"✅ Loaded .env from: {env_path}")
+else:
+    print(f"⚠️  Warning: {env_path} not found. Using system environment variables only.")
+
+# GEMINI API Key from environment variable (now forced from .env file)
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+if GEMINI_API_KEY:
+    # Mask the API key for security in logs
+    print("✅ GEMINI_API_KEY loaded from .env file")
+else:
+    print("⚠️  Warning: GEMINI_API_KEY not found in .env file. LLM validation may fail.")
 
 DEFAULT_ADDRESS_COLUMN = os.getenv("ADDRESS_COLUMN", "Address ")
 DEFAULT_START_CN = os.getenv("START_CONSIGNMENT", "DEMO01005")
@@ -30,8 +49,8 @@ UPLOAD_URL = os.getenv(
     "SHIPSY_UPLOAD_URL",
     "https://demodashboardapi.shipsy.io/api/client/integration/consignment/upload/softdata/v2",
 )
-FETCH_URL = os.getenv("VALIDATOR_FETCH_URL", "http://localhost:5001/api/fetch-cn-details")
-VALIDATE_URL = os.getenv("VALIDATOR_VALIDATE_URL", "http://localhost:5001/api/validate-single")
+FETCH_URL = os.getenv("VALIDATOR_FETCH_URL", "http://localhost:5000/api/fetch-cn-details")
+VALIDATE_URL = os.getenv("VALIDATOR_VALIDATE_URL", "http://localhost:5000/api/validate-single")
 UPLOAD_AUTH = os.getenv(
     "SHIPSY_BASIC_AUTH",
     "Basic YmNmZDdlZWJmNzdiMmQ4NDJlNzVjMDA1NzI3OGY4Og==",
@@ -180,7 +199,13 @@ def validate_single(
         "validation_mode": "llm",
         "consignment_number": consignment_number,
         "cn_details": cn_details,
+        "gemini_api_key": GEMINI_API_KEY,  # Pass the API key from environment variable
     }
+
+    # Print which API key we are using when calling LLM (masked for security)
+    api_key_display = f"{GEMINI_API_KEY[:8]}..." if GEMINI_API_KEY and len(GEMINI_API_KEY) > 8 else "Not set"
+    print(f"\n🔑 Calling LLM with API Key: {api_key_display}")
+    print(f"📤 Making validation request to: {VALIDATE_URL}")
 
     response = session.post(
         VALIDATE_URL,
@@ -188,6 +213,8 @@ def validate_single(
         json=payload,
         timeout=REQUEST_TIMEOUT,
     )
+    
+    print(f"📥 Response status: {response.status_code}")
     response.raise_for_status()
     return response.json()
 
@@ -341,4 +368,3 @@ def main(argv: Optional[list[str]] = None) -> None:
 
 if __name__ == "__main__":
     main(sys.argv[1:])
-

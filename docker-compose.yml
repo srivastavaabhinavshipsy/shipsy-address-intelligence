@@ -27,17 +27,18 @@ services:
     build: ./frontend
     container_name: address-validation-frontend
     ports:
-      - "3000:3000"
+      - "3001:3001"
     environment:
       - REACT_APP_API_URL=http://localhost:5000
       - NODE_ENV=production
+      - PORT=3001
     depends_on:
       - backend
     networks:
       - app-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      test: ["CMD", "curl", "-f", "http://localhost:3001"]
       interval: 30s
       timeout: 10s
       retries: 3

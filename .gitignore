@@ -9,6 +9,9 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+# Environment variables - each service has its own .env
+backend/.env
+frontend/.env
 .env
 *.egg-info/
 dist/

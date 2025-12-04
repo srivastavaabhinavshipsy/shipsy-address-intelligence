@@ -109,7 +109,7 @@ class AppRunner:
                 env=env
             )
             
-            print("✅ Frontend starting at http://localhost:3000")
+            print("✅ Frontend starting at http://localhost:3001")
             print("   (The app will open in your browser automatically)")
             return True
             
@@ -143,7 +143,7 @@ class AppRunner:
         
         print("\n" + "=" * 60)
         print("✨ Shipsy Address Intelligence is running!")
-        print("📍 Frontend: http://localhost:3000")
+        print("📍 Frontend: http://localhost:3001")
         print("🔧 Backend API: http://localhost:5000/api")
         print("\n🛑 Press Ctrl+C to stop all services")
         print("=" * 60 + "\n")

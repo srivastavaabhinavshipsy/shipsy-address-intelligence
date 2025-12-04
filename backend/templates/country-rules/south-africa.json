@@ -1,0 +1,87 @@
+{
+  "countryCode": "ZA",
+  "countryName": "South Africa",
+  "normalization": {
+    "streetAbbreviations": {
+      "St": "Street",
+      "Str": "Street",
+      "Rd": "Road",
+      "Ave": "Avenue",
+      "Av": "Avenue",
+      "Dr": "Drive",
+      "Ln": "Lane",
+      "Ct": "Court",
+      "Pl": "Place",
+      "Blvd": "Boulevard",
+      "Cres": "Crescent"
+    },
+    "cityAbbreviations": {
+      "JHB": "Johannesburg",
+      "PTA": "Pretoria",
+      "CPT": "Cape Town",
+      "DBN": "Durban",
+      "PE": "Port Elizabeth"
+    },
+    "otherAbbreviations": {
+      "PO Box": "Post Office Box",
+      "Apt": "Apartment",
+      "Bldg": "Building",
+      "Fl": "Floor",
+      "Ste": "Suite"
+    }
+  },
+  "validation": {
+    "provinceConfig": {
+      "type": "MANDATORY_LIST",
+      "list": [
+        {"name": "Eastern Cape", "code": "EC"},
+        {"name": "Free State", "code": "FS"},
+        {"name": "Gauteng", "code": "GP"},
+        {"name": "KwaZulu-Natal", "code": "KZN"},
+        {"name": "Limpopo", "code": "LP"},
+        {"name": "Mpumalanga", "code": "MP"},
+        {"name": "Northern Cape", "code": "NC"},
+        {"name": "North West", "code": "NW"},
+        {"name": "Western Cape", "code": "WC"}
+      ]
+    },
+    "postalCode": {
+      "formatRegex": "^\\d{4}$",
+      "ranges": [
+        {"min": 4700, "max": 6499, "context": "EC"},
+        {"min": 9300, "max": 9999, "context": "FS"},
+        {"min": 1400, "max": 1999, "context": "GP"},
+        {"min": 2000, "max": 2199, "context": "GP"},
+        {"min": 2900, "max": 4730, "context": "KZN"},
+        {"min": 600, "max": 999, "context": "LP"},
+        {"min": 1000, "max": 1399, "context": "MP"},
+        {"min": 2200, "max": 2499, "context": "MP"},
+        {"min": 8300, "max": 8999, "context": "NC"},
+        {"min": 2500, "max": 2899, "context": "NW"},
+        {"min": 6500, "max": 8299, "context": "WC"},
+        {"min": 7000, "max": 8099, "context": "WC"}
+      ],
+      "maxLength": 4
+    },
+    "coordinateBounds": {
+      "minLat": -34.83,
+      "maxLat": -22.13,
+      "minLon": 16.45,
+      "maxLon": 32.89
+    },
+    "zoneIdRegex": "^(AGSUB\\d{11}|ZISA\\d{12})$"
+  },
+  "referenceGeocodes": [
+    {"city": "Cape Town", "lat": -33.9249, "lon": 18.4241},
+    {"city": "Johannesburg", "lat": -26.2041, "lon": 28.0473},
+    {"city": "Durban", "lat": -29.8587, "lon": 31.0218},
+    {"city": "Pretoria", "lat": -25.7479, "lon": 28.2293},
+    {"city": "Port Elizabeth", "lat": -33.9608, "lon": 25.6022},
+    {"city": "Bloemfontein", "lat": -29.0852, "lon": 26.1596},
+    {"city": "East London", "lat": -33.0153, "lon": 27.9116},
+    {"city": "Polokwane", "lat": -23.9045, "lon": 29.4686},
+    {"city": "Kimberley", "lat": -28.7323, "lon": 24.7622},
+    {"city": "Margate", "lat": -30.8631, "lon": 30.3686}
+  ]
+}
+

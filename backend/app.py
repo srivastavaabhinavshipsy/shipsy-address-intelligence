@@ -19,9 +19,15 @@ from validator import SAAddressValidator
 from dotenv import load_dotenv
 import threading
 from database import AddressDatabase
+from country_config import normalize_country_name
 
-# Load environment variables
-load_dotenv()
+# Load environment variables - STRICTLY from backend directory only
+backend_dir = os.path.dirname(os.path.abspath(__file__))
+env_path = os.path.join(backend_dir, '.env')
+if os.path.exists(env_path):
+    load_dotenv(dotenv_path=env_path, override=True)
+else:
+    print(f"⚠️  Warning: {env_path} not found. Using system environment variables only.")
 
 app = Flask(__name__)
 
@@ -140,6 +146,7 @@ def fetch_cn_details():
                 destination_city = consignment.get('destination_city', '')
                 destination_state = consignment.get('destination_state', '')
                 destination_pincode = consignment.get('destination_pincode', '')
+                destination_country = consignment.get('destination_country', '')
                 
                 # Construct full address
                 full_address = consignee_address
@@ -162,6 +169,7 @@ def fetch_cn_details():
                     "destination_city": destination_city,
                     "destination_state": destination_state,
                     "destination_pincode": destination_pincode,
+                    "destination_country": destination_country,
                     "ready_for_intelligence": True,
                     "raw_data": consignment  # Include full data for debugging
                 }), 200
@@ -203,6 +211,22 @@ def validate_single():
         consignment_number = data.get('consignment_number', '').strip()
         cn_details = data.get('cn_details', {})
         
+        # Extract country from request or CN details
+        # Country should be provided from org-config or request beforehand
+        country = data.get('country') or cn_details.get('destination_country') or cn_details.get('country')
+        if not country:
+            # Try to get from destination details if available
+            country = data.get('destination_country')
+        
+        # Use default country constant if not provided
+        if not country:
+            from country_config import DEFAULT_COUNTRY
+            country = DEFAULT_COUNTRY
+            print(f"⚠️  Country not provided in request, using default: {DEFAULT_COUNTRY}")
+        
+        # Normalize country name (raises error if country is invalid)
+        country_name = normalize_country_name(country)
+        
         # If we have CN details, use them
         if cn_details and not address:
             address = cn_details.get('full_address') or cn_details.get('consignee_address', '')
@@ -219,11 +243,21 @@ def validate_single():
         start_time = time.time()
         
         if validation_mode == 'llm':
-            llm = get_llm_validator()
+            # Check if API key is provided in request payload
+            request_api_key = data.get('gemini_api_key')
+            if request_api_key:
+                print(f"🔑 Received API key from request payload: {request_api_key}")
+                # Temporarily set the API key and create a new validator
+                os.environ['GEMINI_API_KEY'] = request_api_key
+                from llm_validator import LLMAddressValidator
+                llm = LLMAddressValidator(request_api_key)
+            else:
+                llm = get_llm_validator()
+            
             if llm:
                 try:
-                    print(f"Using LLM intelligence analysis for CN {consignment_number}: {address}")
-                    result = llm.validate_address(address)
+                    print(f"Using LLM intelligence analysis for CN {consignment_number}: {address}") 
+                    result = llm.validate_address(address, country_name)
                     processing_time = round((time.time() - start_time) * 1000, 2)
                     result['processing_time_ms'] = processing_time
                     result['timestamp'] = datetime.now().isoformat()
@@ -340,7 +374,8 @@ def validate_batch():
             'city': ['city', 'town'],
             'area': ['area'],
             'province': ['province', 'state', 'region'],
-            'postal_code': ['postalcode', 'postal_code', 'postal code', 'postcode', 'zip', 'zipcode', 'zip_code', 'pincode']
+            'postal_code': ['postalcode', 'postal_code', 'postal code', 'postcode', 'zip', 'zipcode', 'zip_code', 'pincode'],
+            'country': ['country', 'country_code', 'country_name', 'destination_country']
         }
         
         # Extract addresses from CSV
@@ -395,10 +430,18 @@ def validate_batch():
                     print(f"Built address from components: {address}")
             
             if address:
+                # Extract country from row if available
+                country = None
+                for key in row:
+                    if 'country' in key.lower() and row[key].strip():
+                        country = row[key].strip()
+                        break
+                
                 addresses.append({
                     "id": len(addresses) + 1,
                     "original_row": row,
-                    "address": address
+                    "address": address,
+                    "country": country
                 })
         
         if not addresses:
@@ -431,7 +474,19 @@ def validate_batch():
         for i, addr_data in enumerate(addresses):
             if validation_mode == 'llm':
                 try:
-                    result = llm.validate_address(addr_data["address"])
+                    # Extract country from address data or batch-level country
+                    # Country should be provided from org-config or request beforehand
+                    addr_country = addr_data.get("country") or (data.get('country') if isinstance(data, dict) else None)
+                    
+                    # Use default country constant if not provided
+                    if not addr_country:
+                        from country_config import DEFAULT_COUNTRY
+                        addr_country = DEFAULT_COUNTRY
+                        print(f"⚠️  Country not provided for address {i+1}, using default: {DEFAULT_COUNTRY}")
+                    
+                    # Normalize country name (raises error if country is invalid)
+                    country_name = normalize_country_name(addr_country)
+                    result = llm.validate_address(addr_data["address"], country_name)
                 except Exception as e:
                     print(f"LLM validation error for address {i+1}: {e}")
                     # Fallback to rule-based

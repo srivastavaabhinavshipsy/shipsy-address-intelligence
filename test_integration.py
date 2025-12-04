@@ -78,7 +78,7 @@ def test_backend():
         response = requests.options(
             f"{base_url}/validate-single",
             headers={
-                "Origin": "http://localhost:3000",
+                "Origin": "http://localhost:3001",
                 "Access-Control-Request-Method": "POST",
                 "Access-Control-Request-Headers": "Content-Type"
             }
@@ -102,7 +102,7 @@ def test_frontend_connection():
     print("=" * 60)
     
     print("\nTo test the frontend connection:")
-    print("1. Open http://localhost:3000 in your browser")
+    print("1. Open http://localhost:3001 in your browser")
     print("2. Open Developer Console (F12)")
     print("3. Type an address and click 'Validate'")
     print("4. Check the Network tab for the API call")
@@ -137,7 +137,7 @@ if __name__ == "__main__":
             print("\n✅ Integration test complete!")
             print("\nNext steps:")
             print("1. Ensure frontend is running (cd frontend && npm start)")
-            print("2. Open http://localhost:3000")
+            print("2. Open http://localhost:3001")
             print("3. Try validating an address")
             print("\nExample addresses to try:")
             print("- 123 Main Street, Cape Town, Western Cape, 8001")
