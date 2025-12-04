@@ -40,7 +40,7 @@ docker-compose -f docker-compose.dev.yml up
 ```
 
 ### 3. Access the Application
-- Frontend: http://localhost:3000
+- Frontend: http://localhost:3001
 - Backend API: http://localhost:5000
 - Health Check: http://localhost:5000/health
 
@@ -98,7 +98,7 @@ make reset-db       # Reset the database
    - Environment: GEMINI_API_KEY required
 
 2. **frontend**: React application
-   - Port: 3000
+   - Port: 3001
    - Connects to backend via REACT_APP_API_URL
    - Production: Served with `serve`
    - Development: Uses React dev server
@@ -161,11 +161,11 @@ docker exec -it address-validation-backend chown -R 1000:1000 /app/data
 ### Port conflicts
 ```bash
 # Check if ports are in use
-lsof -i :3000
+lsof -i :3001
 lsof -i :5000
 
 # Change ports in docker-compose.yml
-# Example: "3001:3000" for frontend
+# Example: "3002:3001" for frontend
 ```
 
 ### Database locked
@@ -212,7 +212,7 @@ docker-compose -f docker-compose.prod.yml up -d
 ### Health Checks
 Both containers have built-in health checks:
 - Backend: `http://localhost:5000/health`
-- Frontend: `http://localhost:3000`
+- Frontend: `http://localhost:3001`
 
 ### View resource usage
 ```bash

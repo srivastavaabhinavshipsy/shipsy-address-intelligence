@@ -8,8 +8,12 @@ from typing import Dict, Any, Optional
 from dotenv import load_dotenv
 from country_config import build_final_prompt
 
-# Load environment variables
-load_dotenv()
+# Load environment variables - STRICTLY from backend directory only
+backend_dir = os.path.dirname(os.path.abspath(__file__))
+env_path = os.path.join(backend_dir, '.env')
+if os.path.exists(env_path):
+    # Use override=True to force .env file values to take precedence over system env vars
+    load_dotenv(dotenv_path=env_path, override=True)
 
 class LLMAddressValidator:
     def __init__(self, api_key: Optional[str] = None):

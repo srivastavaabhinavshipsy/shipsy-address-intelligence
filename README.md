@@ -85,7 +85,7 @@ npm install
 npm start
 ```
 
-The application will open at `http://localhost:3000`
+The application will open at `http://localhost:3001`
 
 ## 📚 API Documentation
 

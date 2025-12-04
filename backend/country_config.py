@@ -9,6 +9,7 @@ from typing import Dict, Any, Optional
 # Base directory for templates
 TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), 'templates')
 BASE_PROMPT_FILE = os.path.join(TEMPLATES_DIR, 'base-prompt.txt')
+WHATSAPP_AGENT_BASE_PROMPT_FILE = os.path.join(TEMPLATES_DIR, 'whatsapp-agent-base-prompt.txt')
 COUNTRY_RULES_DIR = os.path.join(TEMPLATES_DIR, 'country-rules')
 
 # Default country constant - can be updated when needed
@@ -125,6 +126,49 @@ def build_final_prompt(address: str, country_name: Optional[str] = None) -> str:
     # Replace placeholders
     final_prompt = base_prompt.replace("{address}", address)
     final_prompt = final_prompt.replace("{configurable_rules}", config_rules)
+    
+    return final_prompt
+
+def get_whatsapp_agent_base_prompt() -> str:
+    """Load WhatsApp agent base prompt template from file"""
+    try:
+        with open(WHATSAPP_AGENT_BASE_PROMPT_FILE, 'r', encoding='utf-8') as f:
+            return f.read()
+    except FileNotFoundError:
+        raise FileNotFoundError(f"WhatsApp agent base prompt file not found: {WHATSAPP_AGENT_BASE_PROMPT_FILE}")
+    except Exception as e:
+        raise Exception(f"Error loading WhatsApp agent base prompt: {str(e)}")
+
+def build_whatsapp_agent_prompt(country_name: Optional[str] = None) -> str:
+    """
+    Build WhatsApp agent prompt by combining base prompt template with country configuration
+    
+    Args:
+        country_name: Country name or code (optional, uses DEFAULT_COUNTRY if not provided)
+                     Country should be provided from org-config or request
+    
+    Returns:
+        Final WhatsApp agent prompt string with placeholders replaced
+    """
+    # Load WhatsApp agent base prompt
+    base_prompt = get_whatsapp_agent_base_prompt()
+    
+    # Load country config (uses DEFAULT_COUNTRY if country_name is None)
+    country_config = load_country_config(country_name)
+    
+    # Get country name for display
+    display_country_name = country_config.get('countryName', country_name or DEFAULT_COUNTRY)
+    if not display_country_name:
+        # Fallback: capitalize and format the normalized name
+        normalized = normalize_country_name(country_name) if country_name else DEFAULT_COUNTRY
+        display_country_name = normalized.replace('-', ' ').title()
+    
+    # Format country config as JSON (same as llm_validator.py)
+    config_rules = format_config_for_prompt(country_config)
+    
+    # Replace placeholders
+    final_prompt = base_prompt.replace("{country_name}", display_country_name)
+    final_prompt = final_prompt.replace("{country_validation_rules}", config_rules)
     
     return final_prompt
 

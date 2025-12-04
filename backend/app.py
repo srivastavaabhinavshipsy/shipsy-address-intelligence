@@ -21,9 +21,13 @@ import threading
 from database import AddressDatabase
 from country_config import normalize_country_name
 
-# Load environment variables - explicitly from backend directory
-env_path = os.path.join(os.path.dirname(__file__), '.env')
-load_dotenv(env_path)
+# Load environment variables - STRICTLY from backend directory only
+backend_dir = os.path.dirname(os.path.abspath(__file__))
+env_path = os.path.join(backend_dir, '.env')
+if os.path.exists(env_path):
+    load_dotenv(dotenv_path=env_path, override=True)
+else:
+    print(f"⚠️  Warning: {env_path} not found. Using system environment variables only.")
 
 app = Flask(__name__)
 
@@ -239,10 +243,20 @@ def validate_single():
         start_time = time.time()
         
         if validation_mode == 'llm':
-            llm = get_llm_validator()
+            # Check if API key is provided in request payload
+            request_api_key = data.get('gemini_api_key')
+            if request_api_key:
+                print(f"🔑 Received API key from request payload: {request_api_key}")
+                # Temporarily set the API key and create a new validator
+                os.environ['GEMINI_API_KEY'] = request_api_key
+                from llm_validator import LLMAddressValidator
+                llm = LLMAddressValidator(request_api_key)
+            else:
+                llm = get_llm_validator()
+            
             if llm:
                 try:
-                    print(f"Using LLM intelligence analysis for CN {consignment_number}: {address}")
+                    print(f"Using LLM intelligence analysis for CN {consignment_number}: {address}") 
                     result = llm.validate_address(address, country_name)
                     processing_time = round((time.time() - start_time) * 1000, 2)
                     result['processing_time_ms'] = processing_time
