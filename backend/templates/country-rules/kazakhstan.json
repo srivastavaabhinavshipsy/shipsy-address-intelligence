@@ -58,16 +58,22 @@
     "postalCode": {
       "formatRegex": "^\\d{6}$",
       "ranges": [
-        { "min": "100000", "max": "129999", "context": "ALA" },
-        { "min": "130000", "max": "139999", "context": "AKM" },
-        { "min": "030000", "max": "039999", "context": "AST" },
-        { "min": "060000", "max": "069999", "context": "KAR" },
-        { "min": "040000", "max": "049999", "context": "EKS" },
-        { "min": "080000", "max": "089999", "context": "PAV" },
-        { "min": "090000", "max": "099999", "context": "NKZ" },
-        { "min": "120000", "max": "129999", "context": "MAN" },
-        { "min": "160000", "max": "169999", "context": "SHM" },
-        { "min": "150000", "max": "159999", "context": "TUR" }
+        { "min": "010000", "max": "019999", "context": "AST" },
+        { "min": "020000", "max": "029999", "context": "AKM" },
+        { "min": "030000", "max": "039999", "context": "AKT" },
+        { "min": "040000", "max": "049999", "context": "ALM" },
+        { "min": "050000", "max": "059999", "context": "ALA" },
+        { "min": "060000", "max": "069999", "context": "ATY" },
+        { "min": "070000", "max": "079999", "context": "EKS" }, 
+        { "min": "080000", "max": "089999", "context": "ZHB" },
+        { "min": "090000", "max": "099999", "context": "WKZ" },
+        { "min": "100000", "max": "109999", "context": "KAR" },
+        { "min": "110000", "max": "119999", "context": "KOS" },
+        { "min": "120000", "max": "129999", "context": "KZY" },
+        { "min": "130000", "max": "139999", "context": "MAN" },
+        { "min": "140000", "max": "149999", "context": "PAV" },
+        { "min": "150000", "max": "159999", "context": "NKZ" },
+        { "min": "160000", "max": "169999", "context": "SHM" }
       ],
       "maxLength": 6
     },
