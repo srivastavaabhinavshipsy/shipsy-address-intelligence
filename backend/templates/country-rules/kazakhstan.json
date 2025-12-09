@@ -1,6 +1,19 @@
 {
   "countryCode": "KZ",
-  "countryName": "Казахстан",
+  "countryName": "Kazakhstan",
+ "countryAliases": [
+    "Kazakhstan",
+    "Republic of Kazakhstan",
+    "KZ",
+    "Kaz",
+    "Казахстан",
+    "Республика Казахстан",
+    "РК",
+    "Қазақстан",
+    "Қазақстан Республикасы",
+    "Qazaqstan"
+ ],
+ 
   "normalization": {
     "streetAbbreviations": {
       "St": "Улица",

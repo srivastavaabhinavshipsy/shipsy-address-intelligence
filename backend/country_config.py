@@ -24,6 +24,88 @@ COUNTRY_CODE_TO_NAME = {
     # Add more mappings as needed
 }
 
+# Cache for dynamic country name mapping (built from config files)
+_COUNTRY_NAME_MAPPING = None
+
+def _build_country_name_mapping() -> Dict[str, str]:
+    """
+    Build a mapping from country names (including localized names) to normalized file names.
+    Scans all country config files and maps their countryName, countryCode, and countryAliases to the file name.
+    This allows handling Russian, English, and other language country names.
+    """
+    print(f"🔍 [COUNTRY_MAPPING] Building country name mapping from: {COUNTRY_RULES_DIR}")
+    mapping = {}
+    
+    if not os.path.exists(COUNTRY_RULES_DIR):
+        print(f"⚠️  [COUNTRY_MAPPING] Country rules directory does not exist: {COUNTRY_RULES_DIR}")
+        return mapping
+    
+    # Scan all JSON files in country-rules directory
+    json_files = [f for f in os.listdir(COUNTRY_RULES_DIR) if f.endswith('.json')]
+    print(f"📁 [COUNTRY_MAPPING] Found {len(json_files)} country config file(s): {json_files}")
+    
+    for filename in json_files:
+        # Extract normalized name from filename (e.g., "kazakhstan.json" -> "kazakhstan")
+        normalized_name = filename[:-5]  # Remove .json extension
+        print(f"  📄 [COUNTRY_MAPPING] Processing: {filename} -> normalized: '{normalized_name}'")
+        
+        try:
+            config_file = os.path.join(COUNTRY_RULES_DIR, filename)
+            with open(config_file, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+                
+                mappings_added = []
+                
+                def add_mapping(key: str):
+                    """Helper to add both original case and lowercase mappings"""
+                    if key:
+                        mapping[key] = normalized_name
+                        mapping[key.lower()] = normalized_name
+                        mappings_added.append(key)
+                
+                # Map countryName (can be in any language) to normalized name
+                country_name = config.get('countryName', '')
+                if country_name:
+                    add_mapping(country_name)
+                    print(f"    ✓ [COUNTRY_MAPPING] Added countryName: '{country_name}'")
+                        
+                # Also map countryCode if available
+                country_code = config.get('countryCode', '')
+                if country_code:
+                    add_mapping(country_code)
+                    print(f"    ✓ [COUNTRY_MAPPING] Added countryCode: '{country_code}'")
+                
+                # Map countryAliases if available (supports multiple aliases)
+                country_aliases = config.get('countryAliases', [])
+                if isinstance(country_aliases, list) and country_aliases:
+                    print(f"    ✓ [COUNTRY_MAPPING] Found {len(country_aliases)} alias(es)")
+                    for alias in country_aliases:
+                        if alias:  # Skip empty strings
+                            add_mapping(alias)
+                            print(f"      → Added alias: '{alias}'")
+                elif not country_aliases:
+                    print(f"    ℹ️  [COUNTRY_MAPPING] No countryAliases found in config")
+                
+                print(f"    ✅ [COUNTRY_MAPPING] Total mappings added for '{normalized_name}': {len(mappings_added)}")
+                        
+        except Exception as e:
+            # Skip files that can't be read
+            print(f"    ❌ [COUNTRY_MAPPING] Warning: Could not read country config {filename}: {e}")
+            continue
+    
+    print(f"🎯 [COUNTRY_MAPPING] Mapping build complete. Total entries: {len(mapping)}")
+    return mapping
+
+def _get_country_name_mapping() -> Dict[str, str]:
+    """Get or build the country name mapping cache"""
+    global _COUNTRY_NAME_MAPPING
+    if _COUNTRY_NAME_MAPPING is None:
+        print("🔄 [COUNTRY_MAPPING] Cache miss - building new mapping")
+        _COUNTRY_NAME_MAPPING = _build_country_name_mapping()
+    else:
+        print("💾 [COUNTRY_MAPPING] Using cached mapping")
+    return _COUNTRY_NAME_MAPPING
+
 def normalize_country_name(country_input: Optional[str] = None) -> str:
     """
     Normalize country name/code to file format (lowercase with hyphens)
@@ -34,16 +116,44 @@ def normalize_country_name(country_input: Optional[str] = None) -> str:
         "KZ" -> "kazakhstan"
         "South Africa" -> "south-africa"
         "ZA" -> "south-africa"
+        "Казахстан" -> "kazakhstan"  # Russian name
         None -> ValueError
     """
+    print(f"\n🌍 [NORMALIZE] Normalizing country name: {repr(country_input)}")
+    
     if not country_input:
+        print("  ❌ [NORMALIZE] Error: Country input is required")
         raise ValueError("Country input is required. Please provide country name or code.")
     
     country_input = country_input.strip()
+    print(f"  📝 [NORMALIZE] Trimmed input: {repr(country_input)}")
     
-    # Check if it's a country code
+    # Get dynamic mapping from config files (includes localized names like Russian)
+    country_mapping = _get_country_name_mapping()
+    print(f"  🔍 [NORMALIZE] Checking dynamic mapping (size: {len(country_mapping)})")
+    
+    # Check if it's a known country name (including localized names like Russian)
+    if country_input in country_mapping:
+        result = country_mapping[country_input]
+        print(f"  ✅ [NORMALIZE] Found in mapping (exact match): '{country_input}' -> '{result}'")
+        return result
+    
+    # Check lowercase version
+    country_lower = country_input.lower()
+    if country_lower in country_mapping:
+        result = country_mapping[country_lower]
+        print(f"  ✅ [NORMALIZE] Found in mapping (lowercase match): '{country_lower}' -> '{result}'")
+        return result
+    
+    print(f"  ⚠️  [NORMALIZE] Not found in dynamic mapping, checking static COUNTRY_CODE_TO_NAME")
+    
+    # Check if it's a country code (fallback to existing static mapping)
     if country_input.upper() in COUNTRY_CODE_TO_NAME:
-        return COUNTRY_CODE_TO_NAME[country_input.upper()]
+        result = COUNTRY_CODE_TO_NAME[country_input.upper()]
+        print(f"  ✅ [NORMALIZE] Found in static code mapping: '{country_input.upper()}' -> '{result}'")
+        return result
+    
+    print(f"  ⚠️  [NORMALIZE] Not found in any mapping, using fallback normalization")
     
     # Convert to lowercase and replace spaces/underscores with hyphens
     normalized = country_input.lower().replace(' ', '-').replace('_', '-')
@@ -52,7 +162,9 @@ def normalize_country_name(country_input: Optional[str] = None) -> str:
     while '--' in normalized:
         normalized = normalized.replace('--', '-')
     
-    return normalized.strip('-')
+    result = normalized.strip('-')
+    print(f"  📤 [NORMALIZE] Fallback normalization result: '{country_input}' -> '{result}'")
+    return result
 
 def get_base_prompt() -> str:
     """Load base prompt template from file"""

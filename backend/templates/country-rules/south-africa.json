@@ -1,6 +1,16 @@
 {
   "countryCode": "ZA",
   "countryName": "South Africa",
+ "countryAliases": [
+    "Republic of South Africa",
+    "RSA",
+    "SA",
+    "Southern Africa",
+    "southafrica",
+    "south-africa",
+    "SouthAfrica",
+    "Mzansi"
+  ],
   "normalization": {
     "streetAbbreviations": {
       "St": "Street",
