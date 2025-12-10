@@ -44,10 +44,10 @@ const AddressValidator = ({ onValidate, validationMode }) => {
     try {
       const response = await fetch(`${API_URL}/api/fetch-cn-details`, {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           consignment_number: consignmentNumber.trim()
         })
       });
@@ -82,15 +82,15 @@ const AddressValidator = ({ onValidate, validationMode }) => {
     try {
       const response = await fetch(`${API_URL}/api/validate-single`, {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           address: cnDetails.full_address || cnDetails.consignee_address,
           contact_number: cnDetails.contact_number,
           validation_mode: validationMode,
           consignment_number: consignmentNumber.trim(),
-          cn_details: cnDetails // Pass previously fetched details if available
+          cn_details: cnDetails // Country detected from cn_details.destination_country
         })
       });
 
@@ -135,6 +135,7 @@ const AddressValidator = ({ onValidate, validationMode }) => {
 
   return (
     <div className="space-y-3">
+      {/* Consignment Number Input */}
       <div>
         <label className="block text-xs font-medium text-gray-700 mb-1">
           Consignment Number *
@@ -414,6 +415,16 @@ const CompactResultTile = ({ result, onClick, isSelected, onAction, onConfirmedA
           <span className="text-xs text-gray-400 font-mono">
             {result.consignment_number ? `CN: ${result.consignment_number}` : `#${result.id?.split('_')[0] || result.id || Math.random().toString(36).substr(2, 6).toUpperCase()}`}
           </span>
+          {/* Country Badge */}
+          {result.country && (
+            <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
+              result.country === 'ZA' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+              result.country === 'KZ' ? 'bg-sky-50 text-sky-700 border border-sky-200' :
+              'bg-gray-50 text-gray-700 border border-gray-200'
+            }`}>
+              {result.country}
+            </span>
+          )}
           {/* Confirmation Status Indicator */}
           {result.confidence_score < 90 && confirmedAddress && (
             <span className="text-xs px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 font-medium flex items-center gap-1">
@@ -445,7 +456,8 @@ const CompactResultTile = ({ result, onClick, isSelected, onAction, onConfirmedA
           {result.confidence_level}
         </span>
         
-        {result.confidence_score < 90 && (
+        {/* Show WhatsApp button only if confidence < 90 AND address not yet confirmed */}
+        {result.confidence_score < 90 && !confirmedAddress && (
           <div className="flex gap-1">
             {/* Call button commented out - keeping only WhatsApp
             <button
@@ -468,6 +480,13 @@ const CompactResultTile = ({ result, onClick, isSelected, onAction, onConfirmedA
               </svg>
             </button>
           </div>
+        )}
+        {/* Show confirmed badge when address is confirmed */}
+        {confirmedAddress && (
+          <span className="text-xs px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 font-medium flex items-center gap-1">
+            <CheckCircleIcon className="h-3 w-3" />
+            Confirmed
+          </span>
         )}
       </div>
 
@@ -588,7 +607,71 @@ const CompactResultTile = ({ result, onClick, isSelected, onAction, onConfirmedA
                   <p className="text-xs text-gray-600">{result.normalized_address}</p>
                 </div>
               )}
-              
+
+              {/* Address Components */}
+              {result.components && Object.keys(result.components).length > 0 && (
+                <div className="bg-gray-50 rounded p-2">
+                  <h5 className="text-xs font-semibold text-gray-700 mb-1">Address Components:</h5>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+                    {result.components.street_address && (
+                      <div className="col-span-2">
+                        <span className="text-xs text-gray-500">Street: </span>
+                        <span className="text-xs text-gray-700">{result.components.street_address}</span>
+                      </div>
+                    )}
+                    {result.components.suburb && (
+                      <div>
+                        <span className="text-xs text-gray-500">Suburb: </span>
+                        <span className="text-xs text-gray-700">{result.components.suburb}</span>
+                      </div>
+                    )}
+                    {result.components.microdistrict && (
+                      <div>
+                        <span className="text-xs text-gray-500">Microdistrict: </span>
+                        <span className="text-xs text-gray-700">{result.components.microdistrict}</span>
+                      </div>
+                    )}
+                    {result.components.city && (
+                      <div>
+                        <span className="text-xs text-gray-500">City: </span>
+                        <span className="text-xs text-gray-700">{result.components.city}</span>
+                      </div>
+                    )}
+                    {/* Province for SA, Oblast for KZ */}
+                    {result.components.province && (
+                      <div>
+                        <span className="text-xs text-gray-500">Province: </span>
+                        <span className="text-xs text-gray-700">{result.components.province}</span>
+                      </div>
+                    )}
+                    {result.components.oblast && (
+                      <div>
+                        <span className="text-xs text-gray-500">Oblast: </span>
+                        <span className="text-xs text-gray-700">{result.components.oblast}</span>
+                      </div>
+                    )}
+                    {result.components.postal_code && (
+                      <div>
+                        <span className="text-xs text-gray-500">Postal Code: </span>
+                        <span className="text-xs text-gray-700">{result.components.postal_code}</span>
+                      </div>
+                    )}
+                    {result.components.apartment && (
+                      <div>
+                        <span className="text-xs text-gray-500">Apartment: </span>
+                        <span className="text-xs text-gray-700">{result.components.apartment}</span>
+                      </div>
+                    )}
+                    {result.components.building && (
+                      <div>
+                        <span className="text-xs text-gray-500">Building: </span>
+                        <span className="text-xs text-gray-700">{result.components.building}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Coordinates */}
               {result.coordinates && (
                 <div className="flex gap-2 text-xs">
@@ -604,19 +687,60 @@ const CompactResultTile = ({ result, onClick, isSelected, onAction, onConfirmedA
   );
 };
 
-// Map Component - Show both original and confirmed addresses
+// Map Component - Show both original and confirmed addresses with OSM/2GIS toggle
 const MapComponent = ({ selectedResult, confirmedAddress }) => {
-  const mapRef = useRef(null);
-  const mapInstanceRef = useRef(null);
-  const originalMarkerRef = useRef(null);
-  const confirmedMarkerRef = useRef(null);
-  const lineRef = useRef(null);
+  const [mapProvider, setMapProvider] = useState('osm'); // 'osm' or '2gis'
+  const [osmInitialized, setOsmInitialized] = useState(false);
+  const [twoGisInitialized, setTwoGisInitialized] = useState(false);
 
+  // OSM/Leaflet refs
+  const osmMapRef = useRef(null);
+  const osmMapInstanceRef = useRef(null);
+  const osmOriginalMarkerRef = useRef(null);
+  const osmConfirmedMarkerRef = useRef(null);
+  const osmLineRef = useRef(null);
+
+  // 2GIS refs
+  const twoGisMapRef = useRef(null);
+  const twoGisMapInstanceRef = useRef(null);
+  const twoGisMarkersRef = useRef([]);
+  const twoGisAPIRef = useRef(null);
+
+  // Get coordinates info
+  const hasOriginalCoords = selectedResult && selectedResult.coordinates &&
+      selectedResult.coordinates.latitude != null &&
+      selectedResult.coordinates.longitude != null;
+
+  const hasConfirmedCoords = confirmedAddress && confirmedAddress.coordinates &&
+      confirmedAddress.coordinates.latitude != null &&
+      confirmedAddress.coordinates.longitude != null;
+
+  // Initialize OSM/Leaflet map
   useEffect(() => {
+    if (mapProvider !== 'osm') return;
+    if (osmMapInstanceRef.current) {
+      // Already initialized, invalidate size and force redraw
+      setTimeout(() => {
+        if (osmMapInstanceRef.current) {
+          osmMapInstanceRef.current.invalidateSize();
+          // Force tile layer to redraw
+          osmMapInstanceRef.current.eachLayer((layer) => {
+            if (layer.redraw) layer.redraw();
+          });
+        }
+      }, 50);
+      setTimeout(() => {
+        if (osmMapInstanceRef.current) {
+          osmMapInstanceRef.current.invalidateSize();
+        }
+      }, 200);
+      return;
+    }
+
     let isMounted = true;
 
-    const initMap = async () => {
-      if (!mapRef.current || mapInstanceRef.current) return;
+    const initOsmMap = async () => {
+      if (!osmMapRef.current) return;
 
       if (!document.querySelector('link[href*="leaflet.css"]')) {
         const link = document.createElement('link');
@@ -627,8 +751,8 @@ const MapComponent = ({ selectedResult, confirmedAddress }) => {
 
       try {
         const L = await import('leaflet');
-        
-        if (isMounted && mapRef.current && !mapInstanceRef.current) {
+
+        if (isMounted && osmMapRef.current && !osmMapInstanceRef.current) {
           delete L.Icon.Default.prototype._getIconUrl;
           L.Icon.Default.mergeOptions({
             iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
@@ -636,72 +760,57 @@ const MapComponent = ({ selectedResult, confirmedAddress }) => {
             shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
           });
 
-          mapInstanceRef.current = L.map(mapRef.current).setView([-28.4793, 24.6727], 5);
-          
+          osmMapInstanceRef.current = L.map(osmMapRef.current).setView([35, 50], 3);
+
           L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© OpenStreetMap contributors'
-          }).addTo(mapInstanceRef.current);
+          }).addTo(osmMapInstanceRef.current);
+
+          setOsmInitialized(true);
         }
       } catch (error) {
-        console.error('Error initializing map:', error);
+        console.error('Error initializing OSM map:', error);
       }
     };
 
-    initMap();
+    initOsmMap();
 
     return () => {
       isMounted = false;
-      if (mapInstanceRef.current) {
-        try {
-          mapInstanceRef.current.remove();
-          mapInstanceRef.current = null;
-        } catch (e) {
-          console.error('Error removing map:', e);
-        }
-      }
     };
-  }, []);
+  }, [mapProvider]);
 
+  // Update OSM markers
   useEffect(() => {
-    if (!mapInstanceRef.current) return;
+    if (!osmInitialized || !osmMapInstanceRef.current) return;
 
-    const updateMarkers = async () => {
+    const updateOsmMarkers = async () => {
       try {
         const L = await import('leaflet');
-        
+
         // Remove existing markers and line
-        if (originalMarkerRef.current) {
-          originalMarkerRef.current.remove();
-          originalMarkerRef.current = null;
+        if (osmOriginalMarkerRef.current) {
+          osmOriginalMarkerRef.current.remove();
+          osmOriginalMarkerRef.current = null;
         }
-        if (confirmedMarkerRef.current) {
-          confirmedMarkerRef.current.remove();
-          confirmedMarkerRef.current = null;
+        if (osmConfirmedMarkerRef.current) {
+          osmConfirmedMarkerRef.current.remove();
+          osmConfirmedMarkerRef.current = null;
         }
-        if (lineRef.current) {
-          lineRef.current.remove();
-          lineRef.current = null;
+        if (osmLineRef.current) {
+          osmLineRef.current.remove();
+          osmLineRef.current = null;
         }
 
-        // Check if we have original address coordinates
-        const hasOriginalCoords = selectedResult && selectedResult.coordinates && 
-            selectedResult.coordinates.latitude != null && 
-            selectedResult.coordinates.longitude != null;
-        
-        // Check if we have confirmed address coordinates
-        const hasConfirmedCoords = confirmedAddress && confirmedAddress.coordinates && 
-            confirmedAddress.coordinates.latitude != null && 
-            confirmedAddress.coordinates.longitude != null;
-        
         // Add marker for original address if coordinates exist
         if (hasOriginalCoords) {
           const { latitude, longitude } = selectedResult.coordinates;
-          
-          const iconColor = 
+
+          const iconColor =
             selectedResult.confidence_score >= 70 ? '#10B981' :
             selectedResult.confidence_score >= 50 ? '#F59E0B' :
             '#EF4444';
-          
+
           const originalIcon = L.divIcon({
             html: `
               <div style="
@@ -732,9 +841,9 @@ const MapComponent = ({ selectedResult, confirmedAddress }) => {
             iconSize: [24, 24],
             iconAnchor: [12, 12],
           });
-          
-          originalMarkerRef.current = L.marker([latitude, longitude], { icon: originalIcon })
-            .addTo(mapInstanceRef.current)
+
+          osmOriginalMarkerRef.current = L.marker([latitude, longitude], { icon: originalIcon })
+            .addTo(osmMapInstanceRef.current)
             .bindPopup(`
               <div style="min-width: 200px;">
                 <strong>Original Address</strong><br/>
@@ -746,8 +855,8 @@ const MapComponent = ({ selectedResult, confirmedAddress }) => {
               </div>
             `);
         }
-        
-        // Add confirmed address marker if available (regardless of original coordinates)
+
+        // Add confirmed address marker if available
         if (hasConfirmedCoords) {
           const confirmedIcon = L.divIcon({
             html: `
@@ -780,12 +889,12 @@ const MapComponent = ({ selectedResult, confirmedAddress }) => {
             iconSize: [16, 16],
             iconAnchor: [8, 8],
           });
-          
-          confirmedMarkerRef.current = L.marker(
-            [confirmedAddress.coordinates.latitude, confirmedAddress.coordinates.longitude], 
+
+          osmConfirmedMarkerRef.current = L.marker(
+            [confirmedAddress.coordinates.latitude, confirmedAddress.coordinates.longitude],
             { icon: confirmedIcon }
           )
-            .addTo(mapInstanceRef.current)
+            .addTo(osmMapInstanceRef.current)
             .bindPopup(`
               <div style="min-width: 200px;">
                 <strong>Confirmed Address</strong><br/>
@@ -796,66 +905,262 @@ const MapComponent = ({ selectedResult, confirmedAddress }) => {
                 <small>Lat: ${confirmedAddress.coordinates.latitude?.toFixed(6) || 'N/A'}, Lng: ${confirmedAddress.coordinates.longitude?.toFixed(6) || 'N/A'}</small>
               </div>
             `);
-          
-          // Draw a line between original and confirmed locations only if both exist
+
+          // Draw a line between original and confirmed locations
           if (hasOriginalCoords) {
             const latlngs = [
               [selectedResult.coordinates.latitude, selectedResult.coordinates.longitude],
               [confirmedAddress.coordinates.latitude, confirmedAddress.coordinates.longitude]
             ];
-            
-            lineRef.current = L.polyline(latlngs, {
+
+            osmLineRef.current = L.polyline(latlngs, {
               color: '#6366F1',
               weight: 2,
               opacity: 0.6,
               dashArray: '5, 10'
-            }).addTo(mapInstanceRef.current);
+            }).addTo(osmMapInstanceRef.current);
           }
         }
-        
-        // Center the map based on what coordinates are available
+
+        // Center the map
         if (hasOriginalCoords && hasConfirmedCoords) {
-          // Both markers exist - fit bounds to show both
           const latlngs = [
             [selectedResult.coordinates.latitude, selectedResult.coordinates.longitude],
             [confirmedAddress.coordinates.latitude, confirmedAddress.coordinates.longitude]
           ];
           const bounds = L.latLngBounds(latlngs);
-          mapInstanceRef.current.fitBounds(bounds, { 
-            padding: [100, 100],
-            maxZoom: 14
-          });
-          
-          const currentZoom = mapInstanceRef.current.getZoom();
-          if (currentZoom > 16) {
-            mapInstanceRef.current.setZoom(15);
-          }
+          osmMapInstanceRef.current.fitBounds(bounds, { padding: [100, 100], maxZoom: 14 });
         } else if (hasConfirmedCoords) {
-          // Only confirmed address exists - center on it
-          mapInstanceRef.current.setView(
-            [confirmedAddress.coordinates.latitude, confirmedAddress.coordinates.longitude], 
-            13, 
-            { animate: true, duration: 0.5 }
+          osmMapInstanceRef.current.setView(
+            [confirmedAddress.coordinates.latitude, confirmedAddress.coordinates.longitude],
+            13, { animate: true, duration: 0.5 }
           );
         } else if (hasOriginalCoords) {
-          // Only original address exists - center on it
-          mapInstanceRef.current.setView(
-            [selectedResult.coordinates.latitude, selectedResult.coordinates.longitude], 
-            13, 
-            { animate: true, duration: 0.5 }
+          osmMapInstanceRef.current.setView(
+            [selectedResult.coordinates.latitude, selectedResult.coordinates.longitude],
+            13, { animate: true, duration: 0.5 }
           );
         }
       } catch (error) {
-        console.error('Error updating markers:', error);
+        console.error('Error updating OSM markers:', error);
       }
     };
 
-    updateMarkers();
-  }, [selectedResult, confirmedAddress]);
+    updateOsmMarkers();
+  }, [osmInitialized, selectedResult, confirmedAddress, hasOriginalCoords, hasConfirmedCoords]);
+
+  // Initialize 2GIS map (only when switching to it for the first time)
+  useEffect(() => {
+    if (mapProvider !== '2gis') return;
+    if (twoGisMapInstanceRef.current) {
+      // Already initialized
+      return;
+    }
+
+    let isMounted = true;
+
+    const init2GisMap = async () => {
+      if (!twoGisMapRef.current) return;
+
+      try {
+        const { load } = await import('@2gis/mapgl');
+        const mapglAPI = await load();
+        twoGisAPIRef.current = mapglAPI;
+
+        if (!isMounted || !twoGisMapRef.current) return;
+
+        // Default center: Kazakhstan
+        let center = [66.9237, 48.0196];
+        let zoom = 4;
+
+        if (hasOriginalCoords) {
+          center = [selectedResult.coordinates.longitude, selectedResult.coordinates.latitude];
+          zoom = 14;
+        }
+
+        const map = new mapglAPI.Map(twoGisMapRef.current, {
+          center: center,
+          zoom: zoom,
+          key: process.env.REACT_APP_2GIS_API_KEY || '',
+        });
+
+        twoGisMapInstanceRef.current = map;
+        setTwoGisInitialized(true);
+
+      } catch (error) {
+        console.error('Error initializing 2GIS map:', error);
+      }
+    };
+
+    init2GisMap();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [mapProvider]);
+
+  // Update 2GIS markers when data changes
+  useEffect(() => {
+    if (!twoGisInitialized || !twoGisMapInstanceRef.current || !twoGisAPIRef.current) return;
+
+    const mapglAPI = twoGisAPIRef.current;
+    const map = twoGisMapInstanceRef.current;
+
+    // Clear existing markers
+    twoGisMarkersRef.current.forEach(marker => {
+      try { marker.destroy(); } catch (e) {}
+    });
+    twoGisMarkersRef.current = [];
+
+    // Add original address marker
+    if (hasOriginalCoords) {
+      const { latitude, longitude } = selectedResult.coordinates;
+      const iconColor =
+        selectedResult.confidence_score >= 70 ? '#10B981' :
+        selectedResult.confidence_score >= 50 ? '#F59E0B' :
+        '#EF4444';
+
+      const originalMarker = new mapglAPI.Marker(map, {
+        coordinates: [longitude, latitude],
+        icon: `data:image/svg+xml,${encodeURIComponent(`
+          <svg width="32" height="40" viewBox="0 0 32 40" xmlns="http://www.w3.org/2000/svg">
+            <path d="M16 0C7.2 0 0 7.2 0 16c0 12 16 24 16 24s16-12 16-24C32 7.2 24.8 0 16 0z" fill="${iconColor}"/>
+            <circle cx="16" cy="16" r="6" fill="white"/>
+          </svg>
+        `)}`,
+        size: [32, 40],
+        anchor: [16, 40],
+        label: {
+          text: 'Original',
+          offset: [0, -45],
+          fontSize: 11,
+          color: '#374151',
+        }
+      });
+      twoGisMarkersRef.current.push(originalMarker);
+
+      // Center on original if no confirmed
+      if (!hasConfirmedCoords) {
+        map.setCenter([longitude, latitude]);
+        map.setZoom(14);
+      }
+    }
+
+    // Add confirmed address marker
+    if (hasConfirmedCoords) {
+      const confirmedMarker = new mapglAPI.Marker(map, {
+        coordinates: [confirmedAddress.coordinates.longitude, confirmedAddress.coordinates.latitude],
+        icon: `data:image/svg+xml,${encodeURIComponent(`
+          <svg width="32" height="40" viewBox="0 0 32 40" xmlns="http://www.w3.org/2000/svg">
+            <path d="M16 0C7.2 0 0 7.2 0 16c0 12 16 24 16 24s16-12 16-24C32 7.2 24.8 0 16 0z" fill="#10B981"/>
+            <circle cx="16" cy="16" r="6" fill="white"/>
+            <path d="M12 16l3 3 5-6" stroke="white" stroke-width="2" fill="none"/>
+          </svg>
+        `)}`,
+        size: [32, 40],
+        anchor: [16, 40],
+        label: {
+          text: 'Confirmed',
+          offset: [0, -45],
+          fontSize: 11,
+          color: '#10B981',
+        }
+      });
+      twoGisMarkersRef.current.push(confirmedMarker);
+
+      // Center on confirmed if no original
+      if (!hasOriginalCoords) {
+        map.setCenter([confirmedAddress.coordinates.longitude, confirmedAddress.coordinates.latitude]);
+        map.setZoom(14);
+      }
+    }
+
+    // Fit bounds if both markers exist
+    if (hasOriginalCoords && hasConfirmedCoords) {
+      const bounds = {
+        southWest: [
+          Math.min(selectedResult.coordinates.longitude, confirmedAddress.coordinates.longitude),
+          Math.min(selectedResult.coordinates.latitude, confirmedAddress.coordinates.latitude)
+        ],
+        northEast: [
+          Math.max(selectedResult.coordinates.longitude, confirmedAddress.coordinates.longitude),
+          Math.max(selectedResult.coordinates.latitude, confirmedAddress.coordinates.latitude)
+        ]
+      };
+      map.fitBounds(bounds, { padding: { top: 50, bottom: 50, left: 50, right: 50 } });
+    }
+
+  }, [twoGisInitialized, selectedResult, confirmedAddress, hasOriginalCoords, hasConfirmedCoords]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (osmMapInstanceRef.current) {
+        try {
+          osmMapInstanceRef.current.remove();
+          osmMapInstanceRef.current = null;
+        } catch (e) {}
+      }
+      if (twoGisMapInstanceRef.current) {
+        try {
+          twoGisMapInstanceRef.current.destroy();
+          twoGisMapInstanceRef.current = null;
+        } catch (e) {}
+      }
+    };
+  }, []);
 
   return (
-    <div className="bg-white rounded-md border border-gray-200 overflow-hidden h-full">
-      <div ref={mapRef} className="w-full h-full" style={{ minHeight: '400px' }} />
+    <div className="bg-white rounded-md border border-gray-200 overflow-hidden h-full flex flex-col">
+      {/* Map Provider Toggle */}
+      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100 bg-gray-50">
+        <span className="text-xs font-medium text-gray-600">Map Provider</span>
+        <div className="flex rounded-md overflow-hidden border border-gray-200">
+          <button
+            onClick={() => setMapProvider('osm')}
+            className={`px-3 py-1 text-xs font-medium transition-colors ${
+              mapProvider === 'osm'
+                ? 'bg-blue-600 text-white'
+                : 'bg-white text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            OSM
+          </button>
+          <button
+            onClick={() => setMapProvider('2gis')}
+            className={`px-3 py-1 text-xs font-medium transition-colors border-l border-gray-200 ${
+              mapProvider === '2gis'
+                ? 'bg-green-600 text-white'
+                : 'bg-white text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            2GIS
+          </button>
+        </div>
+      </div>
+
+      {/* Map Container */}
+      <div className="flex-1 relative" style={{ minHeight: '360px' }}>
+        {/* OSM Map - use visibility instead of display for better Leaflet compatibility */}
+        <div
+          ref={osmMapRef}
+          className="absolute inset-0"
+          style={{
+            visibility: mapProvider === 'osm' ? 'visible' : 'hidden',
+            zIndex: mapProvider === 'osm' ? 1 : 0
+          }}
+        />
+
+        {/* 2GIS Map */}
+        <div
+          ref={twoGisMapRef}
+          className="absolute inset-0"
+          style={{
+            visibility: mapProvider === '2gis' ? 'visible' : 'hidden',
+            zIndex: mapProvider === '2gis' ? 1 : 0
+          }}
+        />
+      </div>
     </div>
   );
 };
@@ -965,6 +1270,23 @@ function App() {
     setSelectedResultIndex(index);
   };
 
+  // Handle confirmed address update - saves to both result object and state
+  const handleConfirmedAddressUpdate = (resultId, confirmedAddress) => {
+    // Update the selectedConfirmedAddress for the map
+    setSelectedConfirmedAddress(confirmedAddress);
+
+    // Also save the confirmed address to the result object for persistence
+    if (confirmedAddress && resultId) {
+      setAllProcessedResults(prev =>
+        prev.map(result =>
+          result.id === resultId
+            ? { ...result, confirmed_address: confirmedAddress }
+            : result
+        )
+      );
+    }
+  };
+
   const navigationTabs = [
     { id: 'validate', label: 'Validate', icon: BeakerIcon },
     // { id: 'bulk', label: 'Bulk Upload', icon: CloudArrowUpIcon }, // Hidden for demo
@@ -1067,15 +1389,16 @@ function App() {
                       {allProcessedResults.map((result, idx) => {
                         const actualIndex = idx;
                         return (
-                          <CompactResultTile 
+                          <CompactResultTile
                             key={result.id || `validate-${idx}`}  // Use virtual_number as key to prevent cross-contamination
                             result={result}
                             onClick={() => {
                               setValidateSelectedIndex(actualIndex);
-                              setSelectedConfirmedAddress(null); // Reset on selection change
+                              // Use confirmed address from result if available, otherwise reset
+                              setSelectedConfirmedAddress(result.confirmed_address || null);
                             }}
                             isSelected={validateSelectedIndex === actualIndex}
-                            onConfirmedAddressUpdate={setSelectedConfirmedAddress}
+                            onConfirmedAddressUpdate={(confirmedAddr) => handleConfirmedAddressUpdate(result.id, confirmedAddr)}
                           />
                         );
                       })}
@@ -1171,10 +1494,11 @@ function App() {
                           result={result}
                           onClick={() => {
                             handleResultClick(actualIndex);
-                            setSelectedConfirmedAddress(null); // Reset on selection change
+                            // Use confirmed address from result if available, otherwise reset
+                            setSelectedConfirmedAddress(result.confirmed_address || null);
                           }}
                           isSelected={selectedResultIndex === actualIndex}
-                          onConfirmedAddressUpdate={setSelectedConfirmedAddress}
+                          onConfirmedAddressUpdate={(confirmedAddr) => handleConfirmedAddressUpdate(result.id, confirmedAddr)}
                         />
                       );
                     })}
