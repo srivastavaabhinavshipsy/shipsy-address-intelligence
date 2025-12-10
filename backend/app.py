@@ -20,6 +20,15 @@ from dotenv import load_dotenv
 import threading
 from database import AddressDatabase
 
+# Import country detection utilities
+from countries import (
+    detect_country_from_address,
+    detect_country_from_cn_details,
+    list_supported_countries,
+    get_country_info,
+    is_supported
+)
+
 # Load environment variables
 load_dotenv()
 
@@ -188,42 +197,61 @@ def fetch_cn_details():
 @cross_origin()
 def validate_single():
     """Validate a single address with LLM for intelligence analysis"""
-        
+
     try:
         data = request.get_json()
         print(f"Received validation request: {data}")
-        
+
         # Handle both direct address and CN-based requests
         if not data or ('address' not in data and 'consignment_number' not in data):
             return jsonify({
                 "error": "Missing 'address' or 'consignment_number' field in request"
             }), 400
-        
+
         address = data.get('address', '').strip()
         consignment_number = data.get('consignment_number', '').strip()
         cn_details = data.get('cn_details', {})
-        
+
         # If we have CN details, use them
         if cn_details and not address:
             address = cn_details.get('full_address') or cn_details.get('consignee_address', '')
-        
+
         if not address:
             return jsonify({
                 "error": "Address cannot be empty"
             }), 400
-        
+
+        # Determine country: URL param > request body > CN details > auto-detect from address
+        country_code = request.args.get('country', '').upper()
+        if not country_code:
+            country_code = data.get('country', '').upper()
+        if not country_code and cn_details:
+            country_code = detect_country_from_cn_details(cn_details)
+        if not country_code:
+            country_code = detect_country_from_address(address)
+
+        # Validate country is supported
+        if not is_supported(country_code):
+            return jsonify({
+                "error": f"Unsupported country: {country_code}",
+                "supported_countries": [c['code'] for c in list_supported_countries()]
+            }), 400
+
+        country_info = get_country_info(country_code)
+        print(f"🌍 Detected country: {country_info['name']} ({country_code})")
+
         # Always use LLM for CN-based addresses for intelligence analysis
         validation_mode = 'llm' if consignment_number else data.get('validation_mode', 'llm')
-        
+
         # Choose validator based on mode
         start_time = time.time()
-        
+
         if validation_mode == 'llm':
             llm = get_llm_validator()
             if llm:
                 try:
                     print(f"Using LLM intelligence analysis for CN {consignment_number}: {address}")
-                    result = llm.validate_address(address)
+                    result = llm.validate_address(address, country_code)
                     processing_time = round((time.time() - start_time) * 1000, 2)
                     result['processing_time_ms'] = processing_time
                     result['timestamp'] = datetime.now().isoformat()
@@ -1109,6 +1137,17 @@ def health():
         "rule_validator": "available"
     })
 
+
+@app.route('/api/countries', methods=['GET'])
+@cross_origin()
+def get_countries():
+    """Get list of supported countries for address validation"""
+    return jsonify({
+        "countries": list_supported_countries(),
+        "default": "ZA"
+    })
+
+
 @app.route('/', methods=['GET'])
 @cross_origin()
 def home():
@@ -1122,8 +1161,10 @@ def home():
             "/api/batch-results/<job_id>",
             "/api/stats",
             "/api/trigger-agent",
+            "/api/countries",
             "/health"
         ],
+        "supported_countries": ["ZA (South Africa)", "KZ (Kazakhstan)"],
         "validation_mode": "AI-powered (Gemini 2.5 Pro)",
         "llm_status": "available" if get_llm_validator() else "not configured (set GEMINI_API_KEY in .env)"
     })
