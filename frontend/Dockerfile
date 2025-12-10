@@ -4,6 +4,9 @@ FROM node:18-alpine
 # Set working directory
 WORKDIR /app
 
+# 2GIS Map API Key for Kazakhstan support
+ENV REACT_APP_2GIS_API_KEY=6d5af39c-442f-4abb-9dbd-98c2f85c0f8d
+
 # Copy package files
 COPY package*.json ./
 
