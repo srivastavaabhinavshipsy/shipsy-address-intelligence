@@ -261,10 +261,11 @@ def validate_single():
                     result['contact_number'] = data.get('contact_number') or cn_details.get('contact_number')
                     result['consignment_number'] = consignment_number
                     result['consignee_name'] = cn_details.get('consignee_name')
-                    
+                    result['country_code'] = country_code  # Include country code in response
+
                     # Save to database
                     db.save_validated_address(result)
-                    
+
                     print(f"LLM validation successful: {result.get('confidence_score')}%")
                     return jsonify(result), 200
                 except Exception as e:
@@ -283,10 +284,11 @@ def validate_single():
                     response['contact_number'] = data.get('contact_number') or cn_details.get('contact_number')
                     response['consignment_number'] = consignment_number
                     response['consignee_name'] = cn_details.get('consignee_name')
-                    
+                    response['country_code'] = country_code  # Include country code in response
+
                     # Save to database
                     db.save_validated_address(response)
-                    
+
                     return jsonify(response), 200
             else:
                 return jsonify({
@@ -308,10 +310,11 @@ def validate_single():
         response['contact_number'] = data.get('contact_number') or cn_details.get('contact_number')
         response['consignment_number'] = consignment_number
         response['consignee_name'] = cn_details.get('consignee_name')
-        
+        response['country_code'] = country_code  # Include country code in response
+
         # Save to database
         db.save_validated_address(response)
-        
+
         print(f"Validation complete: {response['confidence_score']}% confidence")
         return jsonify(response), 200
         
@@ -944,6 +947,15 @@ def trigger_agent():
         confidence_score = data.get('confidence_score', 0)
         contact_number = data.get('contact_number', '+27812345678')  # Get contact number from frontend
         virtual_number = data.get('virtual_number')  # Get the virtual number (e.g., CRNSEP006)
+        country_code = data.get('country_code', 'ZA')  # Get country code from frontend
+        consignee_name = data.get('consignee_name', 'there')  # Get customer name from frontend
+
+        # Map country code to full country name
+        country_names = {
+            'ZA': 'South Africa',
+            'KZ': 'Kazakhstan'
+        }
+        country_name = country_names.get(country_code, 'South Africa')
         
         # Get already validated data from frontend instead of re-processing
         components = data.get('components', {})
@@ -1010,13 +1022,13 @@ def trigger_agent():
         agent_payload = {
             "customer_phone_number": contact_number,  # Use the contact number from frontend
             "reference_number": reference_number,  # Using virtual number as reference
-            "customer_name": "there",  # Generic customer name
+            "customer_name": consignee_name,  # Customer name from CN details
             "shipment_description": f"Address Verification - Score: {confidence_score}%",
             "address_details": {
                 "address_line_1": address,
                 "pincode": components.get('postal_code', ''),
                 "city": components.get('city', ''),
-                "country": "South Africa",
+                "country": country_name,
                 "latitude": str(coordinates.get('latitude', '')) if coordinates else '',
                 "longitude": str(coordinates.get('longitude', '')) if coordinates else ''
             },

@@ -311,15 +311,17 @@ const CompactResultTile = ({ result, onClick, isSelected, onAction, onConfirmedA
         headers: { 
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ 
-          address: result.original_address, 
+        body: JSON.stringify({
+          address: result.original_address,
           action_type: actionType,
           issues: result.issues || [],
           confidence_score: result.confidence_score,
           contact_number: contactNum,
           virtual_number: result.consignment_number || result.id,  // Pass CN number or fallback to id
           components: result.components || {},  // Pass already validated components
-          coordinates: result.coordinates || {}  // Pass already validated coordinates
+          coordinates: result.coordinates || {},  // Pass already validated coordinates
+          country_code: result.country_code || 'ZA',  // Pass country code for webhook
+          consignee_name: result.consignee_name || 'there'  // Pass customer name
         })
       });
 
