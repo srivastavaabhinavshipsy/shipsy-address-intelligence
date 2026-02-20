@@ -212,7 +212,9 @@ class LLMAddressValidator:
                 components['city'] = fields.get('city')
             if fields.get('oblast'):
                 components['oblast'] = fields.get('oblast')
-                components['region'] = fields.get('oblast')  # Alias for consistency
+                components['region'] = fields.get('oblast')
+            if fields.get('postalCode'):
+                components['postal_code'] = fields.get('postalCode')
 
         elif country_code == "AU":
             # Australia fields
