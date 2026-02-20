@@ -1176,7 +1176,7 @@ def home():
             "/api/countries",
             "/health"
         ],
-        "supported_countries": ["ZA (South Africa)", "KZ (Kazakhstan)"],
+        "supported_countries": ["ZA (South Africa)", "KZ (Kazakhstan)", "AU (Australia)"],
         "validation_mode": "AI-powered (Gemini 2.5 Pro)",
         "llm_status": "available" if get_llm_validator() else "not configured (set GEMINI_API_KEY in .env)"
     })

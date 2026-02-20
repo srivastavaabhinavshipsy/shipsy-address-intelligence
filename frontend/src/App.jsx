@@ -26,6 +26,12 @@ import toast from 'react-hot-toast';
 // Start with empty data - all validations will be real from now on
 const INITIAL_DATA = [];
 
+const REGION_LABELS = {
+  'AU': 'State',
+  'ZA': 'Province',
+  'KZ': 'Oblast',
+};
+
 // Compact Address Validator Component
 const AddressValidator = ({ onValidate, validationMode }) => {
   const [consignmentNumber, setConsignmentNumber] = useState('');
@@ -639,17 +645,12 @@ const CompactResultTile = ({ result, onClick, isSelected, onAction, onConfirmedA
                         <span className="text-xs text-gray-700">{result.components.city}</span>
                       </div>
                     )}
-                    {/* Province for SA, Oblast for KZ */}
-                    {result.components.province && (
+                    {(result.components.province || result.components.state || result.components.oblast) && (
                       <div>
-                        <span className="text-xs text-gray-500">Province: </span>
-                        <span className="text-xs text-gray-700">{result.components.province}</span>
-                      </div>
-                    )}
-                    {result.components.oblast && (
-                      <div>
-                        <span className="text-xs text-gray-500">Oblast: </span>
-                        <span className="text-xs text-gray-700">{result.components.oblast}</span>
+                        <span className="text-xs text-gray-500">{REGION_LABELS[result.country] || 'Region'}: </span>
+                        <span className="text-xs text-gray-700">
+                          {result.components.province || result.components.state || result.components.oblast}
+                        </span>
                       </div>
                     )}
                     {result.components.postal_code && (
