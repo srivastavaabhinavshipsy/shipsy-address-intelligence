@@ -212,7 +212,24 @@ class LLMAddressValidator:
                 components['city'] = fields.get('city')
             if fields.get('oblast'):
                 components['oblast'] = fields.get('oblast')
-                components['region'] = fields.get('oblast')  # Alias for consistency
+                components['region'] = fields.get('oblast')
+            if fields.get('postalCode'):
+                components['postal_code'] = fields.get('postalCode')
+
+        elif country_code == "AU":
+            # Australia fields
+            if fields.get('streetNumber'):
+                components['street_no'] = str(fields.get('streetNumber'))
+            if fields.get('streetName'):
+                components['street'] = fields.get('streetName')
+                components['street_address'] = f"{fields.get('streetNumber', '')} {fields.get('streetName', '')}".strip()
+            if fields.get('suburb'):
+                components['suburb'] = fields.get('suburb')
+            if fields.get('city'):
+                components['city'] = fields.get('city')
+            if fields.get('state'):
+                components['state'] = fields.get('state')
+                components['province'] = fields.get('state')
             if fields.get('postalCode'):
                 components['postal_code'] = fields.get('postalCode')
 

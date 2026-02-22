@@ -9,6 +9,7 @@ This module provides:
 - LLM prompt selection by country
 """
 
+import re
 from typing import Dict, Optional
 
 
@@ -28,6 +29,13 @@ COUNTRIES = {
         "postal_code_length": 6,
         "default_coords": {"lat": 48.0196, "lon": 66.9237},
     },
+    "AU": {
+        "name": "Australia",
+        "name_local": "Australia",
+        "language": "en",
+        "postal_code_length": 4,
+        "default_coords": {"lat": -25.2744, "lon": 133.7751},
+    },
 }
 
 # Aliases for country detection (uppercase)
@@ -46,6 +54,11 @@ COUNTRY_ALIASES = {
     "РЕСПУБЛИКА КАЗАХСТАН": "KZ",
     "REPUBLIC OF KAZAKHSTAN": "KZ",
     "QAZAQSTAN": "KZ",
+
+    # Australia
+    "AUSTRALIA": "AU",
+    "AUS": "AU",
+    "COMMONWEALTH OF AUSTRALIA": "AU",
 }
 
 
@@ -102,6 +115,11 @@ def detect_country_from_address(address: str) -> str:
     # Check for Cyrillic characters (Russian/Kazakh)
     if any('\u0400' <= char <= '\u04FF' for char in address):
         return "KZ"
+
+    # Check for Australian state abbreviations in context
+    au_state_pattern = r'\b(NSW|VIC|QLD|ACT|TAS)\b'
+    if re.search(au_state_pattern, address):
+        return "AU"
 
     # Default to South Africa
     return "ZA"
@@ -163,6 +181,9 @@ def get_prompt(country_code: str, address: str) -> str:
     elif code == "KZ":
         from .kazakhstan.prompt import get_prompt as get_kz_prompt
         return get_kz_prompt(address)
+    elif code == "AU":
+        from .australia.prompt import get_prompt as get_au_prompt
+        return get_au_prompt(address)
     else:
         raise ValueError(f"No prompt available for country: {code}")
 
